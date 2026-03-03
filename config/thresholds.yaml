@@ -1,0 +1,13 @@
+defaults:
+  reorder_point: 50
+  critical_level: 10
+  lead_time_days: 14
+  safety_stock_multiplier: 1.5
+
+skus:
+  # SKU別設定の例:
+  # "SKU-001":
+  #   reorder_point: 100
+  #   critical_level: 20
+  #   lead_time_days: 21
+  # ここに記載のないSKUはdefaultsが適用されます

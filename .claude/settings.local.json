@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:python-amazon-sp-api.readthedocs.io)",
+      "Bash(python3 -c \"import json,sys; data=json.load\\(sys.stdin\\); print\\(data[0][''text'']\\)\")",
+      "Bash(pip install -e \".[dev]\")",
+      "Bash(brew list --versions python)",
+      "Bash(python3 -m pip install -e \".[dev]\")",
+      "Bash(python3 -m pip install --upgrade pip)",
+      "Bash(python3 -m pip install -e \"/Users/aililuca/amazon[dev]\")",
+      "Bash(python3 -m pytest tests/ -v)",
+      "Bash(git -C /Users/aililuca/amazon init)",
+      "Bash(git -C /Users/aililuca/amazon add -A)",
+      "Bash(git -C /Users/aililuca/amazon status)"
+    ]
+  }
+}

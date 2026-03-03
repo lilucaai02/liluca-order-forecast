@@ -1,0 +1,32 @@
+[project]
+name = "amazon-inventory-monitor"
+version = "0.1.0"
+description = "Amazon SP-API inventory monitoring and reorder alert system"
+requires-python = ">=3.9"
+dependencies = [
+    "python-amazon-sp-api>=1.9.59",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "pyyaml>=6.0",
+    "pandas>=2.1",
+    "requests>=2.31",
+    "click>=8.1",
+    "apscheduler>=3.10",
+    "python-dotenv>=1.0",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+slack = ["slack-sdk>=3.21"]
+dev = [
+    "pytest>=7.4",
+    "pytest-mock>=3.12",
+    "ruff>=0.1",
+]
+
+[project.scripts]
+inventory-monitor = "cli:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
