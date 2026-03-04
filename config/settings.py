@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # Slack
     slack_webhook_url: str = ""
 
+    # Sandbox mode
+    sandbox_mode: bool = True
+
     # Monitoring
     check_interval_minutes: int = 60
     alert_cooldown_hours: int = 24

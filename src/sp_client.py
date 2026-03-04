@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from sp_api.api import Inventories, Sales
 from sp_api.base import Marketplaces, SellingApiException
+from sp_api.base.sales_enum import Granularity
 
 if TYPE_CHECKING:
     from config.settings import Settings
@@ -28,6 +29,7 @@ class SPClient:
         self._settings = settings
         self._marketplace = MARKETPLACE_MAP[settings.marketplace.value]
         self._marketplace_id = MARKETPLACE_ID_MAP[settings.marketplace.value]
+        self._sandbox = settings.sandbox_mode
         self._credentials: dict = {
             "refresh_token": settings.sp_api_refresh_token,
             "lwa_app_id": settings.lwa_app_id,
@@ -39,10 +41,18 @@ class SPClient:
             self._credentials["role_arn"] = settings.sp_api_role_arn
 
     def _make_client(self, api_class: type):
-        return api_class(
+        client = api_class(
             marketplace=self._marketplace,
             credentials=self._credentials,
         )
+        if self._sandbox:
+            # サンドボックスエンドポイントに切り替え
+            prod_endpoint = client.endpoint
+            client.endpoint = prod_endpoint.replace(
+                "://sellingpartnerapi",
+                "://sandbox.sellingpartnerapi",
+            )
+        return client
 
     @property
     def marketplace_id(self) -> str:
@@ -85,6 +95,14 @@ class SPClient:
 
         return all_summaries
 
+    GRANULARITY_MAP: dict[str, Granularity] = {
+        "Hour": Granularity.HOUR,
+        "Day": Granularity.DAY,
+        "Week": Granularity.WEEK,
+        "Month": Granularity.MONTH,
+        "Year": Granularity.YEAR,
+    }
+
     def get_order_metrics(
         self,
         interval_start: str,
@@ -93,10 +111,11 @@ class SPClient:
     ) -> list[dict]:
         """販売メトリクスを取得."""
         client = self._make_client(Sales)
+        gran_enum = self.GRANULARITY_MAP.get(granularity, Granularity.DAY)
         try:
             response = client.get_order_metrics(
                 interval=(interval_start, interval_end),
-                granularity=granularity,
+                granularity=gran_enum,
                 granularityTimeZone="Asia/Tokyo",
             )
         except SellingApiException as e:
