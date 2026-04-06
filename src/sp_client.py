@@ -7,7 +7,7 @@ from sp_api.base import Marketplaces, SellingApiException
 from sp_api.base.sales_enum import Granularity
 
 if TYPE_CHECKING:
-    from config.settings import Settings
+    from config.settings import AccountConfig, Settings
 
 MARKETPLACE_MAP = {
     "JP": Marketplaces.JP,
@@ -25,13 +25,18 @@ MARKETPLACE_ID_MAP = {
 
 
 class SPClient:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, account: AccountConfig | None = None) -> None:
         self._settings = settings
         self._marketplace = MARKETPLACE_MAP[settings.marketplace.value]
         self._marketplace_id = MARKETPLACE_ID_MAP[settings.marketplace.value]
         self._sandbox = settings.sandbox_mode
+
+        # アカウント指定がある場合はそのトークンを使用、なければレガシー設定
+        refresh_token = account.refresh_token if account else settings.sp_api_refresh_token
+        self._account_name = account.name if account else "default"
+
         self._credentials: dict = {
-            "refresh_token": settings.sp_api_refresh_token,
+            "refresh_token": refresh_token,
             "lwa_app_id": settings.lwa_app_id,
             "lwa_client_secret": settings.lwa_client_secret,
         }
@@ -39,6 +44,10 @@ class SPClient:
             self._credentials["aws_access_key"] = settings.sp_api_access_key
             self._credentials["aws_secret_key"] = settings.sp_api_secret_key
             self._credentials["role_arn"] = settings.sp_api_role_arn
+
+    @property
+    def account_name(self) -> str:
+        return self._account_name
 
     def _make_client(self, api_class: type):
         client = api_class(
@@ -108,16 +117,23 @@ class SPClient:
         interval_start: str,
         interval_end: str,
         granularity: str = "Day",
+        asin: str | None = None,
+        sku: str | None = None,
     ) -> list[dict]:
-        """販売メトリクスを取得."""
+        """販売メトリクスを取得. asin/skuを指定するとSKU別データを取得."""
         client = self._make_client(Sales)
         gran_enum = self.GRANULARITY_MAP.get(granularity, Granularity.DAY)
+        kwargs: dict = {
+            "interval": (interval_start, interval_end),
+            "granularity": gran_enum,
+            "granularityTimeZone": "Asia/Tokyo",
+        }
+        if asin:
+            kwargs["asin"] = asin
+        if sku:
+            kwargs["sku"] = sku
         try:
-            response = client.get_order_metrics(
-                interval=(interval_start, interval_end),
-                granularity=gran_enum,
-                granularityTimeZone="Asia/Tokyo",
-            )
+            response = client.get_order_metrics(**kwargs)
         except SellingApiException as e:
             raise RuntimeError(f"SP-API sales error: {e}") from e
 

@@ -4,37 +4,65 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from config.settings import Settings
 from src.alerts import AlertDispatcher
-from src.inventory import fetch_inventory, save_snapshot
+from src.inventory import fetch_inventory, fetch_rakuten_inventory, save_snapshot
 from src.monitor import check_inventory, load_thresholds
+from src.rakuten_client import RakutenClient
 from src.sales import fetch_sales_velocity
 from src.sp_client import SPClient
 
 
 def _run_check(settings: Settings) -> None:
-    """1回分の在庫チェック・アラート送信を実行."""
-    client = SPClient(settings)
+    """1回分の在庫チェック・アラート送信を全アカウントに対して実行."""
+    accounts = settings.get_accounts()
+    if not accounts:
+        # レガシー: 単一アカウント
+        accounts = [None]
 
-    try:
-        items = fetch_inventory(client)
-    except Exception as e:
-        print(f"在庫取得エラー: {e}")
+    all_items = []
+    all_sales: dict = {}
+
+    for account in accounts:
+        account_name = account.name if account else "default"
+        client = SPClient(settings, account=account)
+
+        try:
+            items = fetch_inventory(client)
+        except Exception as e:
+            print(f"[{account_name}] 在庫取得エラー: {e}")
+            continue
+
+        if items:
+            all_items.extend(items)
+
+        try:
+            sales = fetch_sales_velocity(client)
+            all_sales.update(sales)
+        except Exception:
+            pass
+
+        print(f"[Amazon:{account_name}] {len(items)}件の在庫を取得")
+
+    # 楽天アカウント
+    for rakuten_acc in settings.get_rakuten_accounts():
+        try:
+            rclient = RakutenClient(rakuten_acc)
+            items = fetch_rakuten_inventory(rclient)
+        except Exception as e:
+            print(f"[楽天:{rakuten_acc.name}] 在庫取得エラー: {e}")
+            continue
+        if items:
+            all_items.extend(items)
+        print(f"[楽天:{rakuten_acc.name}] {len(items)}件の在庫を取得")
+
+    if not all_items:
         return
 
-    if not items:
-        return
-
-    save_snapshot(items, settings.data_dir)
+    save_snapshot(all_items, settings.data_dir)
     defaults, sku_configs = load_thresholds(settings.thresholds_file)
 
-    sales_data = {}
-    try:
-        sales_data = fetch_sales_velocity(client)
-    except Exception:
-        pass
-
-    alerts = check_inventory(items, defaults, sku_configs, sales_data)
+    alerts = check_inventory(all_items, defaults, sku_configs, all_sales)
     if not alerts:
-        print("全SKU正常")
+        print("全アカウント・全SKU正常")
         return
 
     dispatcher = AlertDispatcher(settings)

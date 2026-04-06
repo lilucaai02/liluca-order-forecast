@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Amazon/楽天 在庫ダッシュボード</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #333; }
+    header { background: #232f3e; color: white; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
+    header h1 { font-size: 20px; font-weight: 600; }
+    header span { font-size: 13px; color: #aaa; margin-left: auto; }
+    .container { max-width: 1500px; margin: 0 auto; padding: 24px; }
+    .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 20px; }
+    .stat-card { background: white; border-radius: 8px; padding: 18px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .stat-card .num { font-size: 32px; font-weight: 700; }
+    .stat-card .label { font-size: 12px; color: #666; margin-top: 4px; }
+    .stat-card.total .num { color: #232f3e; }
+    .stat-card.out .num { color: #ff4444; }
+    .stat-card.crit .num { color: #ff8800; }
+    .stat-card.warn .num { color: #cc9900; }
+    .stat-card.ok .num { color: #44bb44; }
+    .stat-card.alert30 .num { color: #9b1c1c; }
+    .stat-card.alert30 { border: 2px solid #fca5a5; background: #fff5f5; }
+    .sale-banner { background: #fff8e1; border: 1px solid #ffc107; border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px; color: #7c5a00; display: none; }
+    .sale-banner b { color: #e65100; }
+    .controls { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+    .controls input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; flex: 1; min-width: 200px; }
+    .controls select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; background: white; }
+    .table-wrap { background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead { background: #232f3e; color: white; }
+    thead th { padding: 12px 14px; text-align: left; font-weight: 600; white-space: nowrap; }
+    tbody tr { border-bottom: 1px solid #f0f0f0; transition: background 0.1s; }
+    tbody tr:hover { background: #f8f9fa; }
+    tbody tr.alert-row { background: #fff5f5; }
+    tbody tr.alert-row:hover { background: #fee2e2; }
+    tbody td { padding: 10px 14px; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; color: white; }
+    .badge.在庫切れ { background: #ff4444; }
+    .badge.危険 { background: #ff8800; }
+    .badge.要発注 { background: #cc9900; }
+    .badge.正常 { background: #44bb44; }
+    .days-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; }
+    .days-badge.urgent { background: #fee2e2; color: #9b1c1c; border: 1px solid #fca5a5; }
+    .days-badge.warning { background: #fff3cd; color: #7c5a00; border: 1px solid #ffc107; }
+    .days-badge.ok { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+    .qty { font-weight: 600; font-size: 14px; }
+    .account-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; background: #e8f0fe; color: #1a56db; font-weight: 600; }
+    .account-tag.clickable { cursor: pointer; }
+    .account-tag.clickable:hover { opacity: 0.75; }
+    .name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .count { color: #666; font-size: 13px; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="6" fill="#ff9900"/><path d="M8 20c4.4 2.8 10.2 3 14.8 0" stroke="white" stroke-width="2" stroke-linecap="round"/><path d="M22.5 18.5l2 2-2 2" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <h1>在庫ダッシュボード</h1>
+    <span id="updated">読み込み中...</span>
+  </header>
+  <div class="container">
+    <div class="stats">
+      <div class="stat-card total"><div class="num" id="s-total">-</div><div class="label">全SKU</div></div>
+      <div class="stat-card alert30"><div class="num" id="s-alert30">-</div><div class="label">⚠ 30日以内切れ</div></div>
+      <div class="stat-card out"><div class="num" id="s-out">-</div><div class="label">在庫切れ</div></div>
+      <div class="stat-card crit"><div class="num" id="s-crit">-</div><div class="label">危険</div></div>
+      <div class="stat-card warn"><div class="num" id="s-warn">-</div><div class="label">要発注</div></div>
+      <div class="stat-card ok"><div class="num" id="s-ok">-</div><div class="label">正常</div></div>
+    </div>
+    <div class="sale-banner" id="sale-banner"></div>
+    <div class="controls">
+      <input type="text" id="search" placeholder="SKU・商品名・ASINで検索...">
+      <select id="filter-marketplace"><option value="">全MP</option><option value="amazon">Amazon</option><option value="rakuten">楽天</option></select>
+      <select id="filter-account"><option value="">全アカウント</option></select>
+      <select id="filter-status"><option value="">全ステータス</option><option value="在庫切れ">在庫切れ</option><option value="危険">危険</option><option value="要発注">要発注</option><option value="正常">正常</option></select>
+      <select id="filter-alert"><option value="">全表示</option><option value="alert">30日以内のみ</option></select>
+    </div>
+    <div class="count" id="row-count"></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>MP</th>
+            <th>アカウント</th>
+            <th>SKU</th>
+            <th>ASIN</th>
+            <th>商品名</th>
+            <th style="text-align:right">出荷可能</th>
+            <th style="text-align:right">合計</th>
+            <th style="text-align:right">発注点</th>
+            <th style="text-align:right">残り日数</th>
+            <th>状態</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let allRows = [];
+
+    fetch('/data')
+      .then(r => r.json())
+      .then(data => {
+        allRows = data.rows;
+        const s = data.stats;
+        document.getElementById('s-total').textContent = s.total;
+        document.getElementById('s-alert30').textContent = s.alert_30 || 0;
+        document.getElementById('s-out').textContent = s.out;
+        document.getElementById('s-crit').textContent = s.critical;
+        document.getElementById('s-warn').textContent = s.warning;
+        document.getElementById('s-ok').textContent = s.ok;
+        document.getElementById('updated').textContent = '最終更新: ' + new Date().toLocaleString('ja-JP');
+
+        // セールバナー
+        if (data.sale_events && data.sale_events.length > 0) {
+          const today = new Date().toISOString().split('T')[0];
+          const upcoming = data.sale_events.filter(e => e.end >= today).slice(0, 3);
+          if (upcoming.length > 0) {
+            const banner = document.getElementById('sale-banner');
+            banner.style.display = 'block';
+            banner.innerHTML = '📅 セール予定: ' + upcoming.map(e =>
+              `<b>${e.name}</b> (${e.start}〜${e.end}, ${e.multiplier}倍)`
+            ).join(' ／ ');
+          }
+        }
+
+        // アカウントフィルター（Amazon/楽天をoptgroupで分類）
+        const sel = document.getElementById('filter-account');
+        const amazonAccs = [...new Set(allRows.filter(r => r.marketplace==='amazon').map(r => r.account))];
+        const rakutenAccs = [...new Set(allRows.filter(r => r.marketplace==='rakuten').map(r => r.account))];
+        if (amazonAccs.length) {
+          const g = document.createElement('optgroup'); g.label = 'Amazon';
+          amazonAccs.forEach(a => { const o = document.createElement('option'); o.value = 'amazon:' + a; o.textContent = a; g.appendChild(o); });
+          sel.appendChild(g);
+        }
+        if (rakutenAccs.length) {
+          const g = document.createElement('optgroup'); g.label = '楽天';
+          rakutenAccs.forEach(a => { const o = document.createElement('option'); o.value = 'rakuten:' + a; o.textContent = a; g.appendChild(o); });
+          sel.appendChild(g);
+        }
+
+        render();
+      });
+
+    function daysLabel(days) {
+      if (days === null || days === undefined) return '<span style="color:#bbb">—</span>';
+      const cls = days < 30 ? 'urgent' : days < 45 ? 'warning' : 'ok';
+      return `<span class="days-badge ${cls}">${days}日</span>`;
+    }
+
+    function render() {
+      const q = document.getElementById('search').value.toLowerCase();
+      const mp = document.getElementById('filter-marketplace').value;
+      const accVal = document.getElementById('filter-account').value;
+      const st = document.getElementById('filter-status').value;
+      const al = document.getElementById('filter-alert').value;
+
+      const filtered = allRows.filter(r => {
+        if (mp && r.marketplace !== mp) return false;
+        if (accVal) {
+          const [accMp, accName] = accVal.includes(':') ? accVal.split(':') : [null, accVal];
+          if (accMp && r.marketplace !== accMp) return false;
+          if (accName && r.account !== accName) return false;
+        }
+        if (st && r.status !== st) return false;
+        if (al === 'alert' && !r.alert_30) return false;
+        if (q && !r.sku.toLowerCase().includes(q) && !r.name.toLowerCase().includes(q) && !r.asin.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      document.getElementById('row-count').textContent = filtered.length + ' 件表示中 / 全 ' + allRows.length + ' 件';
+
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = filtered.map(r => `
+        <tr class="${r.alert_30 ? 'alert-row' : ''}">
+          <td><span class="account-tag clickable" style="background:${r.marketplace==='rakuten'?'#fff0f0':'#e8f0fe'};color:${r.marketplace==='rakuten'?'#c00':'#1a56db'}" onclick="setFilter('filter-marketplace','${r.marketplace}')">${r.marketplace==='rakuten'?'楽天':'Amazon'}</span></td>
+          <td><span class="account-tag clickable" onclick="setFilter('filter-account','${r.marketplace}:${r.account}')">${r.account}</span></td>
+          <td style="font-family:monospace;font-size:12px">${r.sku}</td>
+          <td style="font-family:monospace;font-size:12px;color:#555">${r.asin}</td>
+          <td class="name" title="${r.name}">${r.name}</td>
+          <td style="text-align:right"><span class="qty" style="color:${r.qty===0?'#ff4444':r.qty<=10?'#ff8800':'#333'}">${r.qty}</span></td>
+          <td style="text-align:right;color:#666">${r.total}</td>
+          <td style="text-align:right;color:#666">${r.reorder}</td>
+          <td style="text-align:right">${daysLabel(r.days_left)}</td>
+          <td><span class="badge ${r.status}">${r.status}</span></td>
+        </tr>
+      `).join('');
+    }
+
+    function setFilter(id, value) {
+      const el = document.getElementById(id);
+      el.value = el.value === value ? '' : value;
+      render();
+    }
+
+    document.getElementById('search').addEventListener('input', render);
+    document.getElementById('filter-marketplace').addEventListener('change', render);
+    document.getElementById('filter-account').addEventListener('change', render);
+    document.getElementById('filter-status').addEventListener('change', render);
+    document.getElementById('filter-alert').addEventListener('change', render);
+  </script>
+</body>
+</html>

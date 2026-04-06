@@ -8,3 +8,9 @@ build/
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
+docs/staff_credentials.txt
+.DS_Store
+settings.json
+get_refresh_token.py
+.claude/settings.local.json
+.claude/settings.json

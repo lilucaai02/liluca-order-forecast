@@ -14,6 +14,8 @@ class AlertLevel(str, Enum):
 
 
 class InventoryItem(BaseModel):
+    account_name: str = "default"
+    marketplace: str = "amazon"
     asin: str
     seller_sku: str
     product_name: str = ""

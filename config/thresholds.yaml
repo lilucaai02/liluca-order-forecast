@@ -1,13 +1,271 @@
 defaults:
-  reorder_point: 50
   critical_level: 10
   lead_time_days: 14
+  reorder_point: 50
   safety_stock_multiplier: 1.5
-
 skus:
-  # SKU別設定の例:
-  # "SKU-001":
-  #   reorder_point: 100
-  #   critical_level: 20
-  #   lead_time_days: 21
-  # ここに記載のないSKUはdefaultsが適用されます
+  0T-0MLZ-OOK2:
+    critical_level: 28
+    lead_time_days: 14
+    reorder_point: 96
+    safety_stock_multiplier: 1.5
+  A8-YPFF-LB3D:
+    critical_level: 39
+    lead_time_days: 14
+    reorder_point: 132
+    safety_stock_multiplier: 1.5
+  DS-01(A):
+    critical_level: 2
+    lead_time_days: 14
+    reorder_point: 5
+    safety_stock_multiplier: 1.5
+  DS-01(A-2):
+    critical_level: 155
+    lead_time_days: 14
+    reorder_point: 518
+    safety_stock_multiplier: 1.5
+  DS-1:
+    critical_level: 2
+    lead_time_days: 14
+    reorder_point: 5
+    safety_stock_multiplier: 1.5
+  GC-01BLUE-35（A-3）:
+    critical_level: 18
+    lead_time_days: 14
+    reorder_point: 61
+    safety_stock_multiplier: 1.5
+  GC-01GREEN-35（A-3）:
+    critical_level: 24
+    lead_time_days: 14
+    reorder_point: 82
+    safety_stock_multiplier: 1.5
+  GC-01ORANGE-35(A-2):
+    critical_level: 2
+    lead_time_days: 14
+    reorder_point: 5
+    safety_stock_multiplier: 1.5
+  GC-01ORANGE-35（A-3）:
+    critical_level: 8
+    lead_time_days: 14
+    reorder_point: 29
+    safety_stock_multiplier: 1.5
+  GC-01PINK-35（A-3）:
+    critical_level: 29
+    lead_time_days: 14
+    reorder_point: 99
+    safety_stock_multiplier: 1.5
+  GC-01S-35（A-3）:
+    critical_level: 81
+    lead_time_days: 14
+    reorder_point: 273
+    safety_stock_multiplier: 1.5
+  GC-01WHITE-35（A-3）:
+    critical_level: 24
+    lead_time_days: 14
+    reorder_point: 81
+    safety_stock_multiplier: 1.5
+  GC-01YELLOW-35（A-3）:
+    critical_level: 3
+    lead_time_days: 14
+    reorder_point: 12
+    safety_stock_multiplier: 1.5
+  GM-02WH-XSTC:
+    critical_level: 11
+    lead_time_days: 14
+    reorder_point: 39
+    safety_stock_multiplier: 1.5
+  JC-MCFF-5PK5:
+    critical_level: 119
+    lead_time_days: 14
+    reorder_point: 399
+    safety_stock_multiplier: 1.5
+  KI-823N-ESXC:
+    critical_level: 33
+    lead_time_days: 14
+    reorder_point: 112
+    safety_stock_multiplier: 1.5
+  MP-02MHD-SMALL(A):
+    critical_level: 84
+    lead_time_days: 14
+    reorder_point: 283
+    safety_stock_multiplier: 1.5
+  MP-02MHD6(A-3):
+    critical_level: 46
+    lead_time_days: 14
+    reorder_point: 156
+    safety_stock_multiplier: 1.5
+  MP-02MHD（A）:
+    critical_level: 2
+    lead_time_days: 14
+    reorder_point: 5
+    safety_stock_multiplier: 1.5
+  TG-01L-GRAY(A):
+    critical_level: 11
+    lead_time_days: 14
+    reorder_point: 39
+    safety_stock_multiplier: 1.5
+  TG-01L（A）:
+    critical_level: 2
+    lead_time_days: 14
+    reorder_point: 5
+    safety_stock_multiplier: 1.5
+  TG-01M(A):
+    critical_level: 168
+    lead_time_days: 14
+    reorder_point: 561
+    safety_stock_multiplier: 1.5
+  TG-01M-BLUE(A):
+    critical_level: 9
+    lead_time_days: 14
+    reorder_point: 31
+    safety_stock_multiplier: 1.5
+  TG-01M-GRAY(A):
+    critical_level: 4
+    lead_time_days: 14
+    reorder_point: 14
+    safety_stock_multiplier: 1.5
+  TG-01S-GRAY(A-2):
+    critical_level: 3
+    lead_time_days: 14
+    reorder_point: 10
+    safety_stock_multiplier: 1.5
+  TG-01XL(A):
+    critical_level: 19
+    lead_time_days: 14
+    reorder_point: 64
+    safety_stock_multiplier: 1.5
+  TG-01XL-BLACKLOGO(A-3):
+    critical_level: 13
+    lead_time_days: 14
+    reorder_point: 46
+    safety_stock_multiplier: 1.5
+  TG-02L-BLACK(A):
+    critical_level: 2
+    lead_time_days: 14
+    reorder_point: 5
+    safety_stock_multiplier: 1.5
+  gc-01blue-35:
+    critical_level: 2
+    lead_time_days: 14
+    reorder_point: 5
+    safety_stock_multiplier: 1.5
+  gc-01orange-35:
+    critical_level: 2
+    lead_time_days: 14
+    reorder_point: 5
+    safety_stock_multiplier: 1.5
+  gc-01red-35:
+    critical_level: 6
+    lead_time_days: 14
+    reorder_point: 23
+    safety_stock_multiplier: 1.5
+  mp-01:
+    critical_level: 8
+    lead_time_days: 14
+    reorder_point: 28
+    safety_stock_multiplier: 1.5
+  mp-01-mhp:
+    critical_level: 18
+    lead_time_days: 14
+    reorder_point: 62
+    safety_stock_multiplier: 1.5
+  mp-02:
+    critical_level: 69
+    lead_time_days: 14
+    reorder_point: 233
+    safety_stock_multiplier: 1.5
+  mp-02mhd:
+    critical_level: 833
+    lead_time_days: 14
+    reorder_point: 2778
+    safety_stock_multiplier: 1.5
+  mp-03:
+    critical_level: 172
+    lead_time_days: 14
+    reorder_point: 575
+    safety_stock_multiplier: 1.5
+  tg-01l:
+    critical_level: 54
+    lead_time_days: 14
+    reorder_point: 182
+    safety_stock_multiplier: 1.5
+  tg-01l-blacklogo:
+    critical_level: 92
+    lead_time_days: 14
+    reorder_point: 308
+    safety_stock_multiplier: 1.5
+  tg-01l-blue:
+    critical_level: 12
+    lead_time_days: 14
+    reorder_point: 42
+    safety_stock_multiplier: 1.5
+  tg-01l-gray:
+    critical_level: 2
+    lead_time_days: 14
+    reorder_point: 5
+    safety_stock_multiplier: 1.5
+  tg-01l-red:
+    critical_level: 20
+    lead_time_days: 14
+    reorder_point: 69
+    safety_stock_multiplier: 1.5
+  tg-01l-short2:
+    critical_level: 13
+    lead_time_days: 14
+    reorder_point: 46
+    safety_stock_multiplier: 1.5
+  tg-01m:
+    critical_level: 34
+    lead_time_days: 14
+    reorder_point: 114
+    safety_stock_multiplier: 1.5
+  tg-01m-blacklogo:
+    critical_level: 79
+    lead_time_days: 14
+    reorder_point: 264
+    safety_stock_multiplier: 1.5
+  tg-01m-blue:
+    critical_level: 5
+    lead_time_days: 14
+    reorder_point: 19
+    safety_stock_multiplier: 1.5
+  tg-01m-gray:
+    critical_level: 14
+    lead_time_days: 14
+    reorder_point: 47
+    safety_stock_multiplier: 1.5
+  tg-01m-red:
+    critical_level: 19
+    lead_time_days: 14
+    reorder_point: 64
+    safety_stock_multiplier: 1.5
+  tg-01m-short2:
+    critical_level: 13
+    lead_time_days: 14
+    reorder_point: 45
+    safety_stock_multiplier: 1.5
+  tg-01s:
+    critical_level: 26
+    lead_time_days: 14
+    reorder_point: 87
+    safety_stock_multiplier: 1.5
+  tg-01s-blacklogo:
+    critical_level: 12
+    lead_time_days: 14
+    reorder_point: 41
+    safety_stock_multiplier: 1.5
+  tg-01s-blue:
+    critical_level: 3
+    lead_time_days: 14
+    reorder_point: 10
+    safety_stock_multiplier: 1.5
+  tg-01s-red:
+    critical_level: 3
+    lead_time_days: 14
+    reorder_point: 11
+    safety_stock_multiplier: 1.5
+  ｍｐ-04:
+    critical_level: 153
+    lead_time_days: 14
+    reorder_point: 513
+    safety_stock_multiplier: 1.5
