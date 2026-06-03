@@ -97,8 +97,11 @@ class SPClient:
             summaries = payload.get("inventorySummaries", [])
             all_summaries.extend(summaries)
 
-            pagination = payload.get("pagination", {})
-            next_token = pagination.get("nextToken")
+            # ページネーション: pagination は response 直下 (payload 内ではない)
+            next_token = getattr(response, "next_token", None)
+            if not next_token:
+                pag = getattr(response, "pagination", None) or {}
+                next_token = pag.get("nextToken") if isinstance(pag, dict) else None
             if not next_token:
                 break
 

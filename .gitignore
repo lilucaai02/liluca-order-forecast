@@ -14,3 +14,8 @@ settings.json
 get_refresh_token.py
 .claude/settings.local.json
 .claude/settings.json
+
+# Secrets and binaries (never commit)
+service-account.json
+ngrok
+*.log

@@ -32,6 +32,16 @@ class RakutenAccountConfig:
     license_key: str
 
 
+@dataclass
+class YahooAccountConfig:
+    """1つのYahoo!ショッピングアカウントの認証情報."""
+    name: str
+    client_id: str        # Yahoo!デベロッパーネットワークのクライアントID (appid)
+    seller_id: str        # Yahoo!ショッピングのストアID (出品者ID)
+    client_secret: str = ""  # OAuthトークン更新用 (在庫書き込み時に必要)
+    refresh_token: str = ""  # OAuthリフレッシュトークン
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -69,6 +79,23 @@ class Settings(BaseSettings):
     rakuten_3_service_secret: str = ""
     rakuten_3_license_key: str = ""
 
+    # Yahoo!ショッピング認証情報 (最大3アカウント)
+    yahoo_1_name: str = ""
+    yahoo_1_client_id: str = ""
+    yahoo_1_seller_id: str = ""
+    yahoo_1_client_secret: str = ""
+    yahoo_1_refresh_token: str = ""
+    yahoo_2_name: str = ""
+    yahoo_2_client_id: str = ""
+    yahoo_2_seller_id: str = ""
+    yahoo_2_client_secret: str = ""
+    yahoo_2_refresh_token: str = ""
+    yahoo_3_name: str = ""
+    yahoo_3_client_id: str = ""
+    yahoo_3_seller_id: str = ""
+    yahoo_3_client_secret: str = ""
+    yahoo_3_refresh_token: str = ""
+
     # AWS (optional)
     sp_api_access_key: str = ""
     sp_api_secret_key: str = ""
@@ -86,6 +113,14 @@ class Settings(BaseSettings):
 
     # Slack
     slack_webhook_url: str = ""
+
+    # ChatWork
+    chatwork_api_token: str = ""
+    chatwork_room_id: str = ""
+
+    # ngrok 公開アクセス用 Basic 認証
+    ngrok_basic_user: str = ""
+    ngrok_basic_pass: str = ""
 
     # Sandbox mode
     sandbox_mode: bool = True
@@ -145,6 +180,25 @@ class Settings(BaseSettings):
             if acc.name == name:
                 return acc
         return None
+
+    def get_yahoo_accounts(self) -> list[YahooAccountConfig]:
+        """設定済みのYahoo!ショッピングアカウント一覧を返す."""
+        accounts: list[YahooAccountConfig] = []
+        for i in range(1, 4):
+            name = getattr(self, f"yahoo_{i}_name", "")
+            client_id = getattr(self, f"yahoo_{i}_client_id", "")
+            seller_id = getattr(self, f"yahoo_{i}_seller_id", "")
+            client_secret = getattr(self, f"yahoo_{i}_client_secret", "")
+            refresh_token = getattr(self, f"yahoo_{i}_refresh_token", "")
+            if name and client_id and seller_id:
+                accounts.append(YahooAccountConfig(
+                    name=name,
+                    client_id=client_id,
+                    seller_id=seller_id,
+                    client_secret=client_secret,
+                    refresh_token=refresh_token,
+                ))
+        return accounts
 
     def validate_credentials(self) -> list[str]:
         """Return list of missing required credentials."""

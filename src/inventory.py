@@ -7,6 +7,7 @@ from pathlib import Path
 from src.models import InventoryItem
 from src.rakuten_client import RakutenClient
 from src.sp_client import SPClient
+from src.yahoo_client import YahooClient
 
 
 def fetch_inventory(
@@ -68,6 +69,32 @@ def fetch_rakuten_inventory(client: RakutenClient) -> list[InventoryItem]:
             product_name=r.get("itemName", ""),
             fulfillable_quantity=r.get("quantity", 0),
             total_quantity=r.get("quantity", 0),
+        )
+        items.append(item)
+
+    return items
+
+
+def fetch_yahoo_inventory(client: YahooClient) -> list[InventoryItem]:
+    """Yahoo!ショッピングから在庫を取得してInventoryItemリストに変換."""
+    raw_items = client.get_store_items()
+    items: list[InventoryItem] = []
+
+    for r in raw_items:
+        sku = client.extract_sku(r)
+        if not sku:
+            continue
+        qty = client.extract_stock_qty(r)
+        name = client.extract_name(r)
+
+        item = InventoryItem(
+            account_name=client.account_name,
+            marketplace="yahoo",
+            asin=sku,           # Yahoo!にはASINがないのでSKUを代用
+            seller_sku=sku,
+            product_name=name,
+            fulfillable_quantity=qty,
+            total_quantity=qty,
         )
         items.append(item)
 

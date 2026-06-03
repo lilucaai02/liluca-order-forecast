@@ -10,8 +10,8 @@
     header { background: #232f3e; color: white; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
     header h1 { font-size: 20px; font-weight: 600; }
     header span { font-size: 13px; color: #aaa; margin-left: auto; }
-    .container { max-width: 1500px; margin: 0 auto; padding: 24px; }
-    .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 20px; }
+    .container { max-width: 100%; margin: 0; padding: 16px; }
+    .stats { display: grid; grid-template-columns: repeat(7, 1fr); gap: 14px; margin-bottom: 20px; }
     .stat-card { background: white; border-radius: 8px; padding: 18px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
     .stat-card .num { font-size: 32px; font-weight: 700; }
     .stat-card .label { font-size: 12px; color: #666; margin-top: 4px; }
@@ -22,20 +22,109 @@
     .stat-card.ok .num { color: #44bb44; }
     .stat-card.alert30 .num { color: #9b1c1c; }
     .stat-card.alert30 { border: 2px solid #fca5a5; background: #fff5f5; }
+    .stat-card.lt-alert .num { color: #7c3aed; }
+    .stat-card.lt-alert { border: 2px solid #c4b5fd; background: #f5f3ff; }
     .sale-banner { background: #fff8e1; border: 1px solid #ffc107; border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px; color: #7c5a00; display: none; }
     .sale-banner b { color: #e65100; }
     .controls { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
     .controls input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; flex: 1; min-width: 200px; }
     .controls select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; background: white; }
-    .table-wrap { background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); overflow: hidden; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .table-wrap {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      overflow-x: auto;
+      overflow-y: visible;
+      max-width: 100%;
+    }
+    /* テーブル上部の横スクロールバー（同期用） */
+    .table-scroll-top {
+      overflow-x: scroll;
+      overflow-y: hidden;
+      height: 16px;
+      background: #f8fafc;
+      border-radius: 8px 8px 0 0;
+      box-shadow: 0 -1px 0 rgba(0,0,0,0.05) inset;
+      max-width: 100%;
+    }
+    .table-scroll-top #scroll-top-spacer { height: 1px; min-width: 100%; }
+
+    /* macOSでスクロールバーを常時表示 */
+    .table-scroll-top::-webkit-scrollbar,
+    .table-wrap::-webkit-scrollbar {
+      -webkit-appearance: none;
+      height: 14px;
+      background: #e5e7eb;
+    }
+    .table-scroll-top::-webkit-scrollbar-thumb,
+    .table-wrap::-webkit-scrollbar-thumb {
+      background: #94a3b8;
+      border-radius: 7px;
+      border: 2px solid #e5e7eb;
+    }
+    .table-scroll-top::-webkit-scrollbar-thumb:hover,
+    .table-wrap::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    /* テーブルは中身に合わせた幅 - 画面より広ければ横スクロール、狭ければ画面幅 */
+    table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
     thead { background: #232f3e; color: white; }
-    thead th { padding: 12px 14px; text-align: left; font-weight: 600; white-space: nowrap; }
+    thead th {
+      padding: 12px 10px;
+      text-align: left;
+      font-weight: 600;
+      white-space: nowrap;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: #232f3e;       /* 既定背景 */
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    }
+    thead th.section-fba { background: #1e3a8a; border-left: 1px solid #93c5fd; font-size: 11px; }
+    thead th.section-rsl { background: #7f1d1d; border-left: 2px solid #fca5a5; }
+    thead th.section-yahoo { background: #7c2d12; border-left: 2px solid #fdba74; }
+    thead th.section-sales { background: #064e3b; border-left: 2px solid #6ee7b7; font-size: 11px; }
+    thead th.section-effective { background: #1a3a5c; border-left: 2px solid #4a9eff; }
+    thead th.section-lt { background: #2d1b4e; border-left: 2px solid #c4b5fd; }
+
+    /* ── 左4列を横スクロール時に固定（モール / アカウント / SKU / 商品名）── */
+    thead th:nth-child(1), tbody td:nth-child(1) {
+      position: sticky; left: 0; z-index: 15;
+      min-width: 90px; max-width: 110px;
+    }
+    thead th:nth-child(2), tbody td:nth-child(2) {
+      position: sticky; left: 90px; z-index: 15;
+      min-width: 100px; max-width: 110px;
+    }
+    thead th:nth-child(3), tbody td:nth-child(3) {
+      position: sticky; left: 195px; z-index: 15;
+      min-width: 130px; max-width: 160px;
+    }
+    thead th:nth-child(4), tbody td:nth-child(4) {
+      position: sticky; left: 330px; z-index: 15;
+      min-width: 220px; max-width: 280px;
+      border-right: 2px solid #cbd5e1;     /* 固定列との境界線 */
+    }
+    /* tbody側は白背景＋枠線で固定列が透けないようにする */
+    tbody td:nth-child(1),
+    tbody td:nth-child(2),
+    tbody td:nth-child(3),
+    tbody td:nth-child(4) { background: white; }
+    tbody tr.alert-row td:nth-child(-n+4) { background: #fff5f5; }
+    tbody tr.lt-alert-row td:nth-child(-n+4) { background: #f5f3ff; }
+    tbody tr.lt-alert-row.alert-row td:nth-child(-n+4) { background: #fdf2f8; }
+    tbody tr:hover td:nth-child(-n+4) { background: #f8f9fa; }
+    /* ヘッダーの固定セルは sticky thead の z-index とけんかしないよう調整 */
+    thead th:nth-child(1), thead th:nth-child(2),
+    thead th:nth-child(3), thead th:nth-child(4) { z-index: 25; }
     tbody tr { border-bottom: 1px solid #f0f0f0; transition: background 0.1s; }
     tbody tr:hover { background: #f8f9fa; }
     tbody tr.alert-row { background: #fff5f5; }
     tbody tr.alert-row:hover { background: #fee2e2; }
-    tbody td { padding: 10px 14px; }
+    tbody tr.lt-alert-row { background: #f5f3ff; }
+    tbody tr.lt-alert-row:hover { background: #ede9fe; }
+    tbody tr.lt-alert-row.alert-row { background: #fdf2f8; }
+    tbody td { padding: 10px; }
     .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; color: white; }
     .badge.在庫切れ { background: #ff4444; }
     .badge.危険 { background: #ff8800; }
@@ -45,12 +134,75 @@
     .days-badge.urgent { background: #fee2e2; color: #9b1c1c; border: 1px solid #fca5a5; }
     .days-badge.warning { background: #fff3cd; color: #7c5a00; border: 1px solid #ffc107; }
     .days-badge.ok { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+    .days-badge.lt-danger { background: #f5f3ff; color: #5b21b6; border: 2px solid #c4b5fd; font-weight: 800; }
+    .order-badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; background: #7c3aed; color: white; }
     .qty { font-weight: 600; font-size: 14px; }
     .account-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; background: #e8f0fe; color: #1a56db; font-weight: 600; }
     .account-tag.clickable { cursor: pointer; }
     .account-tag.clickable:hover { opacity: 0.75; }
-    .name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mp-tag {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-right: 2px;
+      white-space: nowrap;
+    }
+    .mp-tag.clickable, .acc-tag.clickable { cursor: pointer; }
+    .mp-tag.clickable:hover, .acc-tag.clickable:hover { opacity: 0.7; transform: scale(1.05); }
+
+    /* ── 列ヘッダー内蔵フィルター ── */
+    .th-filter {
+      display: block;
+      margin-top: 4px;
+      padding: 2px 4px;
+      font-size: 10px;
+      font-weight: normal;
+      background: rgba(255,255,255,0.95);
+      color: #1a3a5c;
+      border: 1px solid rgba(255,255,255,0.5);
+      border-radius: 3px;
+      cursor: pointer;
+      max-width: 100%;
+    }
+    .th-filter:hover { background: white; }
+
+    /* ── ソートボタン ── */
+    .sort-btn {
+      display: inline-block;
+      padding: 0 4px;
+      margin-left: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      color: rgba(255,255,255,0.5);
+      user-select: none;
+      vertical-align: middle;
+    }
+    .sort-btn:hover { color: white; }
+    .sort-btn.active-asc, .sort-btn.active-desc {
+      color: #fbbf24;
+      font-weight: bold;
+    }
+    .mp-amazon  { background: #e8f0fe; color: #1a56db; }
+    .mp-rakuten { background: #fff0f0; color: #c00; }
+    .mp-yahoo   { background: #fff3e0; color: #e65100; }
+    .acc-tag {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      background: #eef2ff;
+      color: #4338ca;
+      margin-right: 2px;
+      white-space: nowrap;
+    }
+    .name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .count { color: #666; font-size: 13px; margin-bottom: 8px; }
+    .lt-num { font-weight: 700; color: #7c3aed; }
+    .effective-num { font-weight: 700; color: #1a56db; }
+    .in-transit-num { font-size: 12px; color: #666; }
   </style>
 </head>
 <body>
@@ -62,6 +214,7 @@
   <div class="container">
     <div class="stats">
       <div class="stat-card total"><div class="num" id="s-total">-</div><div class="label">全SKU</div></div>
+      <div class="stat-card lt-alert"><div class="num" id="s-lt-alert">-</div><div class="label">🚨 LT発注アラート</div></div>
       <div class="stat-card alert30"><div class="num" id="s-alert30">-</div><div class="label">⚠ 30日以内切れ</div></div>
       <div class="stat-card out"><div class="num" id="s-out">-</div><div class="label">在庫切れ</div></div>
       <div class="stat-card crit"><div class="num" id="s-crit">-</div><div class="label">危険</div></div>
@@ -71,28 +224,20 @@
     <div class="sale-banner" id="sale-banner"></div>
     <div class="controls">
       <input type="text" id="search" placeholder="SKU・商品名・ASINで検索...">
-      <select id="filter-marketplace"><option value="">全MP</option><option value="amazon">Amazon</option><option value="rakuten">楽天</option></select>
+      <select id="filter-marketplace"><option value="">全モール</option><option value="amazon">Amazon</option><option value="rakuten">楽天</option><option value="yahoo">Yahoo!</option></select>
       <select id="filter-account"><option value="">全アカウント</option></select>
       <select id="filter-status"><option value="">全ステータス</option><option value="在庫切れ">在庫切れ</option><option value="危険">危険</option><option value="要発注">要発注</option><option value="正常">正常</option></select>
-      <select id="filter-alert"><option value="">全表示</option><option value="alert">30日以内のみ</option></select>
+      <select id="filter-alert"><option value="">全表示</option><option value="lt">🚨 LTアラートのみ</option><option value="alert">30日以内のみ</option></select>
+      <button id="toggle-stopped" onclick="toggleStopped()" style="padding:8px 14px;border:1px solid #ddd;border-radius:6px;background:white;font-size:13px;cursor:pointer;color:#666">🚫 停止商品を表示</button>
     </div>
     <div class="count" id="row-count"></div>
-    <div class="table-wrap">
+    <!-- 上部の横スクロールバー（メインテーブルと同期） -->
+    <div class="table-scroll-top" id="scroll-top">
+      <div id="scroll-top-spacer"></div>
+    </div>
+    <div class="table-wrap" id="table-wrap">
       <table>
-        <thead>
-          <tr>
-            <th>MP</th>
-            <th>アカウント</th>
-            <th>SKU</th>
-            <th>ASIN</th>
-            <th>商品名</th>
-            <th style="text-align:right">出荷可能</th>
-            <th style="text-align:right">合計</th>
-            <th style="text-align:right">発注点</th>
-            <th style="text-align:right">残り日数</th>
-            <th>状態</th>
-          </tr>
-        </thead>
+        <thead id="thead-row"></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
@@ -100,13 +245,112 @@
 
   <script>
     let allRows = [];
+    let amazonAccounts = [];
+    let showStopped = false;
+
+    function toggleStopped() {
+      showStopped = !showStopped;
+      const btn = document.getElementById('toggle-stopped');
+      btn.textContent = showStopped ? '🚫 停止商品を非表示' : '🚫 停止商品を表示';
+      btn.style.background = showStopped ? '#fee2e2' : 'white';
+      btn.style.color = showStopped ? '#9b1c1c' : '#666';
+      render();
+    }
+
+    // 列単位のフィルター state
+    const colFilters = {};
+    function setColFilter(key, value) {
+      if (value) colFilters[key] = value;
+      else delete colFilters[key];
+      render();
+    }
+
+    // ソート state（key=列キー, dir='asc'|'desc'|null）
+    let currentSort = { key: null, dir: null };
+    function setSort(key) {
+      if (currentSort.key !== key) {
+        currentSort = { key, dir: 'desc' };
+      } else if (currentSort.dir === 'desc') {
+        currentSort = { key, dir: 'asc' };
+      } else {
+        currentSort = { key: null, dir: null };
+      }
+      // ボタンのactive表示更新（再renderで自動反映）
+      render();
+      updateSortButtons();
+    }
+    function updateSortButtons() {
+      document.querySelectorAll('.sort-btn').forEach(b => {
+        b.classList.remove('active-asc', 'active-desc');
+        if (currentSort.key && b.dataset.sortKey === currentSort.key) {
+          b.classList.add(currentSort.dir === 'asc' ? 'active-asc' : 'active-desc');
+        }
+      });
+    }
+    // ソートボタンHTMLヘルパー
+    const SORT_BTN = (key) =>
+      `<span class="sort-btn" data-sort-key="${key}" onclick="setSort('${key}')" title="クリックでソート (降順→昇順→解除)">⇅</span>`;
+
+    // フィルターHTMLヘルパー
+    const NUM_FILTER = (key) => `<select class="th-filter" onchange="setColFilter('${key}', this.value)">
+        <option value="">すべて</option><option value="gt0">&gt;0のみ</option><option value="eq0">=0のみ</option></select>`;
+    const DL_FILTER = (key) => `<select class="th-filter" onchange="setColFilter('${key}', this.value)">
+        <option value="">すべて</option><option value="7">&lt;7日</option><option value="14">&lt;14日</option>
+        <option value="30">&lt;30日</option><option value="60">&lt;60日</option></select>`;
+    const TXT_FILTER = (key) => `<input type="text" class="th-filter" placeholder="検索..." oninput="setColFilter('${key}', this.value)">`;
+    const STATUS_FILTER = `<select class="th-filter" onchange="setColFilter('status', this.value)">
+        <option value="">すべて</option><option value="在庫切れ">在庫切れ</option><option value="危険">危険</option>
+        <option value="要発注">要発注</option><option value="正常">正常</option></select>`;
+
+    function buildHeader() {
+      const tr = document.createElement('tr');
+      const accOpts = ['<option value="">全アカウント</option>']
+        .concat(amazonAccounts.map(a => `<option value="amazon:${a}">${a}</option>`)).join('');
+      const cols = [
+        `<th>モール<br><select class="th-filter" onchange="setFilterDirect('filter-marketplace', this.value)">
+           <option value="">すべて</option><option value="amazon">Amazon</option>
+           <option value="rakuten">楽天</option><option value="yahoo">Yahoo!</option></select></th>`,
+        `<th>アカウント<br><select class="th-filter" onchange="setFilterDirect('filter-account', this.value)">${accOpts}</select></th>`,
+        `<th>SKU<br>${TXT_FILTER('sku')}</th>`,
+        `<th>商品名<br>${TXT_FILTER('name')}</th>`,
+      ];
+      // FBA各アカウント列
+      amazonAccounts.forEach(acc => {
+        cols.push(`<th class="section-fba" style="text-align:right">FBA<br><small>${acc}</small>${SORT_BTN('fba_'+acc)}<br>${NUM_FILTER('fba_'+acc)}</th>`);
+      });
+      cols.push(`<th class="section-rsl" style="text-align:right">楽天${SORT_BTN('rsl')}<br>${NUM_FILTER('rsl')}</th>`);
+      cols.push(`<th class="section-yahoo" style="text-align:right">Yahoo${SORT_BTN('yahoo')}<br>${NUM_FILTER('yahoo')}</th>`);
+      cols.push(`<th class="section-sales" style="text-align:right">7日平均<br><small>販売/日</small>${SORT_BTN('rate7')}<br>${NUM_FILTER('rate7')}</th>`);
+      cols.push(`<th class="section-sales" style="text-align:right">30日平均<br><small>販売/日</small>${SORT_BTN('rate30')}<br>${NUM_FILTER('rate30')}</th>`);
+      cols.push(`<th class="section-sales" style="text-align:right">90日平均<br><small>販売/日</small>${SORT_BTN('rate90')}<br>${NUM_FILTER('rate90')}</th>`);
+      cols.push(`<th class="section-sales" style="text-align:right">残り日数<br><small>(7日基準)</small>${SORT_BTN('dl7')}<br>${DL_FILTER('dl7')}</th>`);
+      cols.push(`<th class="section-sales" style="text-align:right">残り日数<br><small>(30日基準)</small>${SORT_BTN('dl30')}<br>${DL_FILTER('dl30')}</th>`);
+      cols.push(`<th class="section-sales" style="text-align:right">残り日数<br><small>(90日基準)</small>${SORT_BTN('dl90')}<br>${DL_FILTER('dl90')}</th>`);
+      cols.push(`<th class="section-effective" style="text-align:right">発注中${SORT_BTN('in_transit')}<br>${NUM_FILTER('in_transit')}</th>`);
+      cols.push(`<th class="section-effective">発注日<br>${TXT_FILTER('order_date')}</th>`);
+      cols.push(`<th class="section-effective">入庫予定日<br>${TXT_FILTER('arrival_date')}</th>`);
+      cols.push(`<th class="section-effective" style="text-align:right">荒瀬倉庫${SORT_BTN('arase')}<br>${NUM_FILTER('arase')}</th>`);
+      cols.push(`<th class="section-effective" style="text-align:right">中国在庫${SORT_BTN('china')}<br>${NUM_FILTER('china')}</th>`);
+      cols.push(`<th class="section-effective" style="text-align:right">事務所在庫${SORT_BTN('office')}<br>${NUM_FILTER('office')}</th>`);
+      cols.push(`<th class="section-effective" style="text-align:right">全在庫${SORT_BTN('effective')}<br>${NUM_FILTER('effective')}</th>`);
+      cols.push(`<th class="section-effective" style="text-align:right">全在庫<br><small>残り日数</small>${SORT_BTN('eff_days')}<br>${DL_FILTER('eff_days')}</th>`);
+      cols.push(`<th class="section-lt" style="text-align:right">リードタイム<br><small>(日)</small>${SORT_BTN('lt')}<br>${NUM_FILTER('lt')}</th>`);
+      cols.push(`<th class="section-lt" style="text-align:right">発注推奨数${SORT_BTN('order_qty')}<br>${NUM_FILTER('order_qty')}</th>`);
+      cols.push(`<th>状態<br>${STATUS_FILTER}</th>`);
+      tr.innerHTML = cols.join('');
+      document.getElementById('thead-row').appendChild(tr);
+    }
 
     fetch('/data')
       .then(r => r.json())
       .then(data => {
-        allRows = data.rows;
+        allRows = data.rows || [];
+        amazonAccounts = data.amazon_accounts || [];
+        buildHeader();
+
         const s = data.stats;
         document.getElementById('s-total').textContent = s.total;
+        document.getElementById('s-lt-alert').textContent = s.lt_alert || 0;
         document.getElementById('s-alert30').textContent = s.alert_30 || 0;
         document.getElementById('s-out').textContent = s.out;
         document.getElementById('s-crit').textContent = s.critical;
@@ -127,28 +371,51 @@
           }
         }
 
-        // アカウントフィルター（Amazon/楽天をoptgroupで分類）
+        // アカウントフィルター（統合行用に簡略化）
         const sel = document.getElementById('filter-account');
-        const amazonAccs = [...new Set(allRows.filter(r => r.marketplace==='amazon').map(r => r.account))];
-        const rakutenAccs = [...new Set(allRows.filter(r => r.marketplace==='rakuten').map(r => r.account))];
-        if (amazonAccs.length) {
-          const g = document.createElement('optgroup'); g.label = 'Amazon';
-          amazonAccs.forEach(a => { const o = document.createElement('option'); o.value = 'amazon:' + a; o.textContent = a; g.appendChild(o); });
+        if (amazonAccounts.length) {
+          const g = document.createElement('optgroup'); g.label = 'Amazonアカウント別表示';
+          amazonAccounts.forEach(a => {
+            const o = document.createElement('option');
+            o.value = 'amazon:' + a;
+            o.textContent = `${a} (在庫あり)`;
+            g.appendChild(o);
+          });
           sel.appendChild(g);
         }
-        if (rakutenAccs.length) {
-          const g = document.createElement('optgroup'); g.label = '楽天';
-          rakutenAccs.forEach(a => { const o = document.createElement('option'); o.value = 'rakuten:' + a; o.textContent = a; g.appendChild(o); });
-          sel.appendChild(g);
-        }
+        const og = document.createElement('optgroup'); og.label = 'プラットフォーム別';
+        ['rakuten:全RSL', 'yahoo:全Yahoo'].forEach(v => {
+          const [mp, lbl] = v.split(':');
+          const o = document.createElement('option');
+          o.value = mp; o.textContent = lbl;
+          og.appendChild(o);
+        });
+        sel.appendChild(og);
 
         render();
       });
 
-    function daysLabel(days) {
+    function daysLabel(days, isEffective, ltDays) {
       if (days === null || days === undefined) return '<span style="color:#bbb">—</span>';
-      const cls = days < 30 ? 'urgent' : days < 45 ? 'warning' : 'ok';
-      return `<span class="days-badge ${cls}">${days}日</span>`;
+      let cls, extra = '';
+      if (isEffective && ltDays > 0 && days <= ltDays) {
+        cls = 'lt-danger';
+        extra = ' ⚡';
+      } else if (days < 30) {
+        cls = 'urgent';
+      } else if (days < 45) {
+        cls = 'warning';
+      } else {
+        cls = 'ok';
+      }
+      return `<span class="days-badge ${cls}">${days}日${extra}</span>`;
+    }
+
+    function numCell(v, opts={}) {
+      if (!v || v === 0) return '<td style="text-align:right;color:#ccc">—</td>';
+      const color = opts.color || '#333';
+      const bold = opts.bold ? 'font-weight:700' : '';
+      return `<td style="text-align:right;color:${color};${bold}">${v.toLocaleString()}</td>`;
     }
 
     function render() {
@@ -158,41 +425,243 @@
       const st = document.getElementById('filter-status').value;
       const al = document.getElementById('filter-alert').value;
 
+      // 数値フィルター判定 (gt0=>0, eq0==0)
+      const numCheck = (key, value) => {
+        const f = colFilters[key]; if (!f) return true;
+        const v = Number(value || 0);
+        if (f === 'gt0') return v > 0;
+        if (f === 'eq0') return v === 0;
+        return true;
+      };
+      // 残り日数フィルター（< N日）
+      const dlCheck = (key, value) => {
+        const f = colFilters[key]; if (!f) return true;
+        if (value == null) return false;  // 値なし→除外
+        return Number(value) < Number(f);
+      };
+      // テキスト部分一致
+      const txtCheck = (key, value) => {
+        const f = colFilters[key]; if (!f) return true;
+        return (value || '').toString().toLowerCase().includes(f.toLowerCase());
+      };
+
       const filtered = allRows.filter(r => {
-        if (mp && r.marketplace !== mp) return false;
+        if (!showStopped && !r.active) return false;
+        // プラットフォーム/アカウントフィルター: その列に在庫があるかで判定
+        if (mp === 'amazon' && (r.fba_total||0) === 0) return false;
+        if (mp === 'rakuten' && (r.rsl_qty||0) === 0) return false;
+        if (mp === 'yahoo' && (r.yahoo_qty||0) === 0) return false;
         if (accVal) {
-          const [accMp, accName] = accVal.includes(':') ? accVal.split(':') : [null, accVal];
-          if (accMp && r.marketplace !== accMp) return false;
-          if (accName && r.account !== accName) return false;
+          if (accVal.startsWith('amazon:')) {
+            const acc = accVal.split(':')[1];
+            if (!(r.fba_by_account && r.fba_by_account[acc] > 0)) return false;
+          } else if (accVal === 'rakuten' && (r.rsl_qty||0) === 0) return false;
+          else if (accVal === 'yahoo' && (r.yahoo_qty||0) === 0) return false;
         }
         if (st && r.status !== st) return false;
+        if (al === 'lt' && !r.lt_alert) return false;
         if (al === 'alert' && !r.alert_30) return false;
-        if (q && !r.sku.toLowerCase().includes(q) && !r.name.toLowerCase().includes(q) && !r.asin.toLowerCase().includes(q)) return false;
+        if (q && !(r.sku||'').toLowerCase().includes(q) && !(r.name||'').toLowerCase().includes(q)) return false;
+
+        // ── 列ごとのフィルター適用 ──
+        if (!txtCheck('sku', r.sku)) return false;
+        if (!txtCheck('name', r.name)) return false;
+        for (const acc of amazonAccounts) {
+          if (!numCheck('fba_'+acc, (r.fba_by_account||{})[acc] || 0)) return false;
+        }
+        if (!numCheck('rsl', r.rsl_qty)) return false;
+        if (!numCheck('yahoo', r.yahoo_qty)) return false;
+        if (!numCheck('rate7', r.rate_7d)) return false;
+        if (!numCheck('rate30', r.rate_30d)) return false;
+        if (!numCheck('rate90', r.rate_90d)) return false;
+        if (!dlCheck('dl7', r.days_left_7d)) return false;
+        if (!dlCheck('dl30', r.days_left_30d)) return false;
+        if (!dlCheck('dl90', r.days_left_90d)) return false;
+        if (!numCheck('in_transit', r.in_transit)) return false;
+        if (!numCheck('arase', r.arase_qty)) return false;
+        if (!numCheck('china', r.china_qty)) return false;
+        if (!numCheck('office', r.office_qty)) return false;
+        if (!numCheck('effective', r.effective_qty)) return false;
+        if (!dlCheck('eff_days', r.effective_days)) return false;
+        if (!numCheck('lt', r.lt_days)) return false;
+        if (!numCheck('order_qty', r.order_qty)) return false;
+        if (!txtCheck('order_date', r.order_date)) return false;
+        if (!txtCheck('arrival_date', r.arrival_date)) return false;
+        if (colFilters.status && r.status !== colFilters.status) return false;
         return true;
+      });
+
+      // ── ユーザー指定のソートが優先 ──
+      if (currentSort.key) {
+        const getSortVal = (r, key) => {
+          if (key.startsWith('fba_')) return (r.fba_by_account||{})[key.slice(4)] || 0;
+          const map = {
+            rsl: r.rsl_qty, yahoo: r.yahoo_qty,
+            rate7: r.rate_7d, rate30: r.rate_30d, rate90: r.rate_90d,
+            dl7: r.days_left_7d, dl30: r.days_left_30d, dl90: r.days_left_90d,
+            in_transit: r.in_transit, arase: r.arase_qty, china: r.china_qty, office: r.office_qty,
+            effective: r.effective_qty, eff_days: r.effective_days,
+            lt: r.lt_days, order_qty: r.order_qty,
+          };
+          return map[key];
+        };
+        filtered.sort((a, b) => {
+          const va = getSortVal(a, currentSort.key);
+          const vb = getSortVal(b, currentSort.key);
+          // null/undefined は降順時最後・昇順時最後（常に末尾）
+          if (va == null && vb == null) return 0;
+          if (va == null) return 1;
+          if (vb == null) return -1;
+          const cmp = Number(va) - Number(vb);
+          return currentSort.dir === 'asc' ? cmp : -cmp;
+        });
+      } else filtered.sort((a, b) => {
+        if (a.lt_alert !== b.lt_alert) return b.lt_alert - a.lt_alert;
+        if (a.alert_30 !== b.alert_30) return b.alert_30 - a.alert_30;
+        const dA = a.effective_days ?? a.days_left ?? 9999;
+        const dB = b.effective_days ?? b.days_left ?? 9999;
+        return dA - dB;
       });
 
       document.getElementById('row-count').textContent = filtered.length + ' 件表示中 / 全 ' + allRows.length + ' 件';
 
       const tbody = document.getElementById('tbody');
-      tbody.innerHTML = filtered.map(r => `
-        <tr class="${r.alert_30 ? 'alert-row' : ''}">
-          <td><span class="account-tag clickable" style="background:${r.marketplace==='rakuten'?'#fff0f0':'#e8f0fe'};color:${r.marketplace==='rakuten'?'#c00':'#1a56db'}" onclick="setFilter('filter-marketplace','${r.marketplace}')">${r.marketplace==='rakuten'?'楽天':'Amazon'}</span></td>
-          <td><span class="account-tag clickable" onclick="setFilter('filter-account','${r.marketplace}:${r.account}')">${r.account}</span></td>
-          <td style="font-family:monospace;font-size:12px">${r.sku}</td>
-          <td style="font-family:monospace;font-size:12px;color:#555">${r.asin}</td>
+      tbody.innerHTML = filtered.map(r => {
+        const rowClass = r.lt_alert ? 'lt-alert-row' : (r.alert_30 ? 'alert-row' : '');
+
+        // FBAアカウント別セル
+        let fbaCells = '';
+        amazonAccounts.forEach(acc => {
+          const v = (r.fba_by_account && r.fba_by_account[acc]) || 0;
+          if (v === 0) {
+            fbaCells += '<td style="text-align:right;color:#ddd">—</td>';
+          } else {
+            const color = v <= 10 ? '#ff8800' : '#1a56db';
+            fbaCells += `<td style="text-align:right;color:${color};font-weight:600">${v.toLocaleString()}</td>`;
+          }
+        });
+
+        const fbaTotalCell = r.fba_total > 0
+          ? `<td style="text-align:right;font-weight:700;background:#f0f6ff">${r.fba_total.toLocaleString()}</td>`
+          : '<td style="text-align:right;color:#ccc">—</td>';
+
+        const rslCell = r.rsl_qty > 0
+          ? `<td style="text-align:right;color:#c00;font-weight:600;background:#fff0f0">${r.rsl_qty.toLocaleString()}<br><small style="color:#999">${r.rsl_variants}変種</small></td>`
+          : '<td style="text-align:right;color:#ccc">—</td>';
+
+        const yahooCell = r.yahoo_qty > 0
+          ? `<td style="text-align:right;color:#e65100;background:#fff3e0">${r.yahoo_qty}<br><small style="color:#999">${r.yahoo_variants}変種</small></td>`
+          : '<td style="text-align:right;color:#ccc">—</td>';
+
+        // ── 30日 / 90日 平均販売速度 + 残り日数セル ──
+        const fmtRate = v => (v == null ? '<td style="text-align:right;color:#ccc;border-left:2px solid #d1fae5">—</td>'
+                                       : `<td style="text-align:right;color:#047857;font-weight:600;border-left:2px solid #d1fae5">${v.toFixed(2)}</td>`);
+        const fmtRateNoBorder = v => (v == null ? '<td style="text-align:right;color:#ccc">—</td>'
+                                                : `<td style="text-align:right;color:#047857;font-weight:600">${v.toFixed(2)}</td>`);
+        const rate7dCell  = fmtRate(r.rate_7d);
+        const rate30dCell = fmtRateNoBorder(r.rate_30d);
+        const rate90dCell = fmtRateNoBorder(r.rate_90d);
+        const dl7Cell  = (r.days_left_7d  == null)
+          ? '<td style="text-align:right;color:#ccc">—</td>'
+          : `<td style="text-align:right">${daysLabel(r.days_left_7d, false, 0)}</td>`;
+        const dl30Cell = (r.days_left_30d == null)
+          ? '<td style="text-align:right;color:#ccc">—</td>'
+          : `<td style="text-align:right">${daysLabel(r.days_left_30d, false, 0)}</td>`;
+        const dl90Cell = (r.days_left_90d == null)
+          ? '<td style="text-align:right;color:#ccc">—</td>'
+          : `<td style="text-align:right">${daysLabel(r.days_left_90d, false, 0)}</td>`;
+
+        const inTransitCell = r.in_transit > 0
+          ? `<td style="text-align:right;border-left:2px solid #e0eaff"><span class="in-transit-num">+${r.in_transit}</span></td>`
+          : '<td style="text-align:right;border-left:2px solid #e0eaff;color:#ccc">—</td>';
+
+        const araseCell = r.arase_qty > 0
+          ? `<td style="text-align:right"><span class="in-transit-num">${r.arase_qty}</span></td>`
+          : '<td style="text-align:right;color:#ccc">—</td>';
+
+        const chinaCell = (r.china_qty > 0)
+          ? `<td style="text-align:right"><span class="in-transit-num" style="background:#f0f9f0;color:#27ae60">${r.china_qty}</span></td>`
+          : '<td style="text-align:right;color:#ccc">—</td>';
+
+        const officeCell = (r.office_qty > 0)
+          ? `<td style="text-align:right"><span class="in-transit-num" style="background:#fef3c7;color:#92400e">${r.office_qty}</span></td>`
+          : '<td style="text-align:right;color:#ccc">—</td>';
+
+        const effectiveCell = r.effective_qty > r.qty
+          ? `<td style="text-align:right"><span class="effective-num">${r.effective_qty.toLocaleString()}</span></td>`
+          : `<td style="text-align:right;color:#aaa">${(r.effective_qty||0).toLocaleString()}</td>`;
+
+        const ltCell = r.lt_days > 0
+          ? `<td style="text-align:right;border-left:2px solid #e9d8fd"><span class="lt-num">${r.lt_days}日</span></td>`
+          : '<td style="text-align:right;border-left:2px solid #e9d8fd;color:#ccc">—</td>';
+
+        const orderQtyCell = r.lt_alert && r.order_qty > 0
+          ? `<td style="text-align:right"><span class="order-badge">▶ ${r.order_qty}個</span></td>`
+          : (r.order_qty > 0 ? `<td style="text-align:right;color:#999;font-size:12px">${r.order_qty}</td>` : '<td style="text-align:right;color:#ccc">—</td>');
+
+        const orderDateCell = r.order_date
+          ? `<td style="font-size:12px;color:${r.lt_alert?'#7c3aed':'#555'};white-space:nowrap">${r.order_date}</td>`
+          : '<td style="color:#ccc">—</td>';
+
+        const arrivalDateCell = r.arrival_date
+          ? `<td style="font-size:12px;color:#0c7d0c;white-space:nowrap">${r.arrival_date}</td>`
+          : '<td style="color:#ccc">—</td>';
+
+        // ── モール列：プラットフォーム単一タグ（クリックでフィルター）──
+        let mallCell;
+        if (r.platform === 'amazon')       mallCell = '<span class="mp-tag mp-amazon clickable" onclick="setFilter(\'filter-marketplace\',\'amazon\')">Amazon</span>';
+        else if (r.platform === 'rakuten') mallCell = '<span class="mp-tag mp-rakuten clickable" onclick="setFilter(\'filter-marketplace\',\'rakuten\')">楽天</span>';
+        else if (r.platform === 'yahoo')   mallCell = '<span class="mp-tag mp-yahoo clickable" onclick="setFilter(\'filter-marketplace\',\'yahoo\')">Yahoo!</span>';
+        else                                mallCell = '<span style="color:#bbb">—</span>';
+
+        // ── アカウント列：Amazonの場合のみ在庫アカウント名を表示（クリックでフィルター）──
+        let accCell = '<span style="color:#bbb">—</span>';
+        if (r.platform === 'amazon') {
+          const accs = (r.accounts || []).map(a =>
+            `<span class="acc-tag clickable" onclick="setFilter('filter-account','amazon:${a}')">${a}</span>`
+          );
+          if (accs.length) accCell = accs.join(' ');
+        }
+
+        return `
+        <tr class="${rowClass}">
+          <td>${mallCell}</td>
+          <td>${accCell}</td>
+          <td style="font-family:monospace;font-size:13px;font-weight:600">${r.sku}</td>
           <td class="name" title="${r.name}">${r.name}</td>
-          <td style="text-align:right"><span class="qty" style="color:${r.qty===0?'#ff4444':r.qty<=10?'#ff8800':'#333'}">${r.qty}</span></td>
-          <td style="text-align:right;color:#666">${r.total}</td>
-          <td style="text-align:right;color:#666">${r.reorder}</td>
-          <td style="text-align:right">${daysLabel(r.days_left)}</td>
+          ${fbaCells}
+          ${rslCell}
+          ${yahooCell}
+          ${rate7dCell}
+          ${rate30dCell}
+          ${rate90dCell}
+          ${dl7Cell}
+          ${dl30Cell}
+          ${dl90Cell}
+          ${inTransitCell}
+          ${orderDateCell}
+          ${arrivalDateCell}
+          ${araseCell}
+          ${chinaCell}
+          ${officeCell}
+          ${effectiveCell}
+          <td style="text-align:right">${daysLabel(r.effective_days, true, r.lt_days)}</td>
+          ${ltCell}
+          ${orderQtyCell}
           <td><span class="badge ${r.status}">${r.status}</span></td>
-        </tr>
-      `).join('');
+        </tr>`;
+      }).join('');
     }
 
     function setFilter(id, value) {
       const el = document.getElementById(id);
       el.value = el.value === value ? '' : value;
+      render();
+    }
+    // ヘッダードロップダウン用（トグルなし、選択値を直接適用）
+    function setFilterDirect(id, value) {
+      const el = document.getElementById(id);
+      el.value = value;
       render();
     }
 
@@ -201,6 +670,38 @@
     document.getElementById('filter-account').addEventListener('change', render);
     document.getElementById('filter-status').addEventListener('change', render);
     document.getElementById('filter-alert').addEventListener('change', render);
+
+    // ── 上下のスクロールバー同期 + テーブル幅反映 ──
+    (function setupSyncScroll() {
+      const top = document.getElementById('scroll-top');
+      const main = document.getElementById('table-wrap');
+      const spacer = document.getElementById('scroll-top-spacer');
+      let syncing = false;
+
+      function updateSpacerWidth() {
+        const table = main.querySelector('table');
+        if (table) spacer.style.width = table.scrollWidth + 'px';
+      }
+
+      top.addEventListener('scroll', () => {
+        if (syncing) return;
+        syncing = true; main.scrollLeft = top.scrollLeft;
+        requestAnimationFrame(() => syncing = false);
+      });
+      main.addEventListener('scroll', () => {
+        if (syncing) return;
+        syncing = true; top.scrollLeft = main.scrollLeft;
+        requestAnimationFrame(() => syncing = false);
+      });
+
+      // 描画後・リサイズ時にスペーサー幅を更新
+      const observer = new MutationObserver(updateSpacerWidth);
+      observer.observe(document.getElementById('tbody'), { childList: true });
+      observer.observe(document.getElementById('thead-row'), { childList: true });
+      window.addEventListener('resize', updateSpacerWidth);
+      // 初回（DOM準備後）
+      setTimeout(updateSpacerWidth, 100);
+    })();
   </script>
 </body>
 </html>
