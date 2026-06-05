@@ -32,12 +32,37 @@ import requests
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config.settings import Settings
+from src.inventory import fetch_rakuten_inventory
+from src.rakuten_client import RakutenClient
 
 SHEET_NAME = "日次楽天販売推移"
 SEARCH_URL = "https://api.rms.rakuten.co.jp/es/2.0/order/searchOrder/"
 GET_URL    = "https://api.rms.rakuten.co.jp/es/2.0/order/getOrder/"
 
 SalesKey = Tuple[str, str]  # (sku, account_name)
+
+
+def collect_rakuten_skus(settings: Settings) -> List[SalesKey]:
+    """各楽天アカウントの在庫から (SKU, account_name) ペア一覧を取得。"""
+    all_keys: List[SalesKey] = []
+    seen = set()
+    for acc in settings.get_rakuten_accounts():
+        try:
+            client = RakutenClient(acc)
+            items = fetch_rakuten_inventory(client)
+        except Exception as e:
+            print(f"[楽天:{acc.name}] SKU収集エラー: {e}", file=sys.stderr)
+            continue
+        for item in items:
+            if not item.seller_sku:
+                continue
+            key = (item.seller_sku, acc.name)
+            if key in seen:
+                continue
+            seen.add(key)
+            all_keys.append(key)
+        print(f"[楽天:{acc.name}] 在庫から {len(items)} SKU 確認", file=sys.stderr)
+    return all_keys
 
 
 def fetch_rakuten_sales(
@@ -179,10 +204,16 @@ def get_date_columns(ws) -> Dict[str, int]:
     return result
 
 
-def write_sales(spreadsheet, sales: Dict[Tuple[str, str, str], int], dates: List[str]):
+def write_sales(spreadsheet, sales: Dict[Tuple[str, str, str], int],
+                dates: List[str], all_known_keys: List[SalesKey] | None = None):
+    # 在庫から取得した全 SKU を含めて記録（販売 0 は 0 として埋める）
     all_keys_set = set()
     for (sku, acc, _d) in sales:
         all_keys_set.add((sku, acc))
+    # 在庫由来の SKU も追加
+    if all_known_keys:
+        for k in all_known_keys:
+            all_keys_set.add(k)
     all_keys = sorted(all_keys_set)
 
     ws = ensure_sheet(spreadsheet, len(all_keys))
@@ -257,8 +288,12 @@ def main():
         sys.exit(1)
 
     print(f"=== 日次楽天販売推移 [{args.from_date} ～ {args.to_date}] ===", file=sys.stderr)
+    # 在庫から全 SKU を取得（販売 0 のものも含めて記録対象とするため）
+    all_known_keys = collect_rakuten_skus(settings)
+    print(f"在庫由来の (SKU,アカウント) ペア: {len(all_known_keys)} 件", file=sys.stderr)
+
     sales = fetch_rakuten_sales(settings, args.from_date, args.to_date)
-    print(f"取得した販売レコード: {len(sales)}件", file=sys.stderr)
+    print(f"取得した販売レコード(>0): {len(sales)}件", file=sys.stderr)
 
     import gspread
     from google.oauth2.service_account import Credentials
@@ -277,7 +312,7 @@ def main():
         datetime.datetime.strptime(args.from_date, "%Y-%m-%d").date(),
         datetime.datetime.strptime(args.to_date, "%Y-%m-%d").date(),
     )
-    write_sales(sp, sales, dates)
+    write_sales(sp, sales, dates, all_known_keys=all_known_keys)
 
     url = f"https://docs.google.com/spreadsheets/d/{settings.google_spreadsheet_id}"
     print(f"\n完了 → {url}")
