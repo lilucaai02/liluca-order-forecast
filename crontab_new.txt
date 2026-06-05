@@ -1,0 +1,10 @@
+0 5 * * * /usr/bin/python3 /Users/aililuca/amazon/daily_inventory_log.py >> /Users/aililuca/amazon/data/daily_log.txt 2>&1
+0 8 * * * /bin/bash /Users/aililuca/amazon/scripts/morning_chatwork.sh
+5 5 * * * /usr/bin/python3 /Users/aililuca/amazon/daily_inventory_amazon_wide.py >> /Users/aililuca/amazon/data/daily_amazon_wide.log 2>&1
+10 5 * * * /bin/bash /Users/aililuca/amazon/scripts/transfer_amazon_inventory_all.sh >> /Users/aililuca/amazon/data/daily_transfer.log 2>&1
+15 5 * * * /usr/bin/python3 /Users/aililuca/amazon/daily_amazon_sales.py >> /Users/aililuca/amazon/data/daily_sales.log 2>&1
+20 5 * * * /bin/bash /Users/aililuca/amazon/scripts/transfer_amazon_sales_all.sh >> /Users/aililuca/amazon/data/daily_transfer.log 2>&1
+25 5 * * * /usr/bin/python3 /Users/aililuca/amazon/daily_rakuten_inventory.py >> /Users/aililuca/amazon/data/daily_rakuten.log 2>&1
+30 5 * * * /bin/bash /Users/aililuca/amazon/scripts/transfer_rakuten_inventory_all.sh >> /Users/aililuca/amazon/data/daily_transfer.log 2>&1
+35 5 * * * /usr/bin/python3 /Users/aililuca/amazon/daily_rakuten_sales.py >> /Users/aililuca/amazon/data/daily_rakuten.log 2>&1
+40 5 * * * /bin/bash /Users/aililuca/amazon/scripts/transfer_rakuten_sales_all.sh >> /Users/aililuca/amazon/data/daily_transfer.log 2>&1

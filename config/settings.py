@@ -43,8 +43,11 @@ class YahooAccountConfig:
 
 
 class Settings(BaseSettings):
+    # .env をプロジェクトルートからの絶対パスで指定（cron 実行時の cwd ズレを回避）
+    _ENV_FILE_PATH = Path(__file__).resolve().parent.parent / ".env"
+
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE_PATH),
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
