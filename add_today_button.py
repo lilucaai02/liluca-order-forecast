@@ -48,10 +48,14 @@ TARGET_TABS = [
 ]
 
 
-def build_formula(sheet_id: str, gid: int) -> str:
+def build_formula(sheet_id: str, gid: int, offset: int = 3) -> str:
+    """
+    今日の日付列より offset 列前にジャンプするボタンを返す。
+    offset=0 なら今日の列が左端に、offset=3 なら3列前から見える。
+    """
     base_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit#gid={gid}&range="
-    # LEFT(ADDRESS(...), LEN(ADDRESS(...))-1) で行番号を除いて列名のみを取得
-    addr_expr = 'ADDRESS(1,MATCH(TODAY(),1:1,0),4)'
+    # 今日の列番号 - offset で 3列前へジャンプ（最小1）
+    addr_expr = f'ADDRESS(1,MAX(1,MATCH(TODAY(),1:1,0)-{offset}),4)'
     col_only = f'LEFT({addr_expr},LEN({addr_expr})-1)'
     return f'=HYPERLINK("{base_url}"&{col_only}&"1","▶ 今日へ")'
 
