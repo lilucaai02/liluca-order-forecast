@@ -94,8 +94,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tab", required=True)
     today = datetime.date.today()
+    # 元シート側で過去5日を再取得しているので、転記も同じ範囲で上書き
     parser.add_argument("--from-date",
-                        default=(today - datetime.timedelta(days=2)).strftime("%Y-%m-%d"))
+                        default=(today - datetime.timedelta(days=5)).strftime("%Y-%m-%d"))
     parser.add_argument("--to-date",
                         default=(today - datetime.timedelta(days=1)).strftime("%Y-%m-%d"))
     parser.add_argument("--dry-run", action="store_true")

@@ -51,10 +51,16 @@ TAB_BLOCKS = {
     "DS-01 (在庫) ": [
         {"code": "DS-01", "asin": "B0BSRPRN3S",
          "asin_row": 1, "code_row": 3,
-         "sales_forecast_row": 9, "sales_row": 10,
-         "forecast_row": 17, "stock_row": 18,
+         # Amazon系: R8/R9 (楽天イベント/係数) 追加により 2行下にシフト
+         "sales_forecast_row": 11, "sales_row": 12,
+         "forecast_row": 19, "stock_row": 20,
+         # 在庫変更/FROM/TO は元の位置 (R39-41) のまま
          "change_qty_row": 39, "from_row": 40, "to_row": 41,
-         "rakuten_sales_forecast_row": 11, "rakuten_sales_row": 12, "rsl_forecast_row": 19, "rsl_stock_row": 20},
+         # 楽天系も 2行下にシフト
+         "rakuten_sales_forecast_row": 13, "rakuten_sales_row": 14,
+         "rsl_forecast_row": 21, "rsl_stock_row": 22,
+         # 楽天イベント関連 (新規)
+         "rakuten_event_row": 8, "rakuten_event_coef_row": 9},
     ],
     "GC-01(在庫)": [
         {"code": "gc-01s-35", "asin": "B0D5B8QS41",

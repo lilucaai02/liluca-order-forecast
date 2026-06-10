@@ -272,8 +272,9 @@ def daterange(start_date: datetime.date, end_date: datetime.date) -> List[str]:
 def main():
     parser = argparse.ArgumentParser()
     today = datetime.date.today()
+    # 楽天 RMS もキャンセル等で確定が遅れるため、過去5日を再取得して上書き
     parser.add_argument("--from-date",
-                        default=(today - datetime.timedelta(days=2)).strftime("%Y-%m-%d"))
+                        default=(today - datetime.timedelta(days=5)).strftime("%Y-%m-%d"))
     parser.add_argument("--to-date",
                         default=(today - datetime.timedelta(days=1)).strftime("%Y-%m-%d"))
     args = parser.parse_args()

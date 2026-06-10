@@ -279,8 +279,10 @@ def daterange(start_date: datetime.date, end_date: datetime.date) -> List[str]:
 def main():
     parser = argparse.ArgumentParser()
     today = datetime.date.today()
+    # SP-API は当日のデータが翌朝までに集計しきれない場合があるため、
+    # デフォルトで過去5日を再取得して確定値で上書きする
     parser.add_argument("--from-date",
-                        default=(today - datetime.timedelta(days=2)).strftime("%Y-%m-%d"))
+                        default=(today - datetime.timedelta(days=5)).strftime("%Y-%m-%d"))
     parser.add_argument("--to-date",
                         default=(today - datetime.timedelta(days=1)).strftime("%Y-%m-%d"))
     args = parser.parse_args()
