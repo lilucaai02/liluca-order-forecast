@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """
-日次Amazon在庫推移シート → 発注予測スプレッドシートの商品別タブの
-「FBA在庫実績」行への転記（汎用版）。
+日次Amazon在庫推移シート(ASIN版) → 商品別タブの「FBA在庫実績」行への転記（汎用）。
 
-タブ別の設定は tab_blocks_config.py の TAB_BLOCKS で管理。
-新しいタブを追加するには、そこに行構成を書くだけでこのスクリプトで対応可能。
+元シート「日次Amazon在庫推移」は ASIN ベース:
+  A=ASIN, B=アカウント, C=対応SKU, D列以降=日付
+
+各タブのブロック (tab_blocks_config) の asin で照合し、
+同じ ASIN の全アカウント在庫を合算して stock_row に書き込む。
+（販売転記 transfer_sales_to_tab.py と同じ ASINマッチ方式）
 
 使い方:
   python3 transfer_inventory_to_tab.py --tab "マウスピース(在庫)"
-  python3 transfer_inventory_to_tab.py --tab "DS-01 (在庫) "
-  python3 transfer_inventory_to_tab.py --tab "マウスピース(在庫)" --date 2026-06-03
-  python3 transfer_inventory_to_tab.py --tab "マウスピース(在庫)" --dry-run
+  python3 transfer_inventory_to_tab.py --tab "DS-01 (在庫) " --date 2026-06-11
+  python3 transfer_inventory_to_tab.py --tab "DS-01 (在庫) " --dry-run
 """
 
 from __future__ import annotations
@@ -18,27 +20,17 @@ from __future__ import annotations
 import argparse
 import datetime
 import os
-import re
 import sys
-from typing import Dict, List
+from typing import Dict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config.settings import Settings
 from tab_blocks_config import get_blocks
 
-
 DEST_SPREADSHEET_ID = "1mbZlalllDfJDbUmxUx-DNe3Q9uv1cEIhqE4PqFN6C7U"
 SRC_SHEET_NAME = "日次Amazon在庫推移"
 SERIAL_DATE_BASE = datetime.date(1899, 12, 30)
-
-
-def normalize_sku(sku: str) -> str:
-    """SKU を正規化: 小文字化、全角→半角括弧、(...) 除去。"""
-    s = sku.lower().strip()
-    s = s.replace("（", "(").replace("）", ")")
-    s = re.sub(r"\([^)]*\)", "", s)
-    return s.strip()
 
 
 def col_letter(n: int) -> str:
@@ -49,8 +41,8 @@ def col_letter(n: int) -> str:
     return s
 
 
-def read_source_inventory(gc, src_spreadsheet_id: str, date_str: str) -> Dict[str, int]:
-    """日次Amazon在庫推移から指定日の {正規化SKU: 合算qty} を返す。複数アカウント合算。"""
+def read_source_inventory_by_asin(gc, src_spreadsheet_id: str, date_str: str) -> Dict[str, int]:
+    """日次Amazon在庫推移(ASIN版)から指定日の {ASIN: 全アカウント合算qty} を返す。"""
     sp = gc.open_by_key(src_spreadsheet_id)
     ws = sp.worksheet(SRC_SHEET_NAME)
 
@@ -63,17 +55,15 @@ def read_source_inventory(gc, src_spreadsheet_id: str, date_str: str) -> Dict[st
     if target_col_idx is None:
         raise ValueError(f"元シート1行目に日付 '{date_str}' が見つかりません")
 
-    col_a = ws.col_values(1)
-    n = len(col_a)
-    target_col_letter = col_letter(target_col_idx)
-    rows = ws.get(f"A2:{target_col_letter}{n}")
+    last_col_letter = col_letter(target_col_idx)
+    rows = ws.get(f"A2:{last_col_letter}")
 
     aggregated: Dict[str, int] = {}
     for row in rows:
         if len(row) < 1:
             continue
-        sku = row[0]
-        if not sku:
+        asin = row[0]
+        if not asin:
             continue
         if len(row) >= target_col_idx:
             try:
@@ -82,8 +72,7 @@ def read_source_inventory(gc, src_spreadsheet_id: str, date_str: str) -> Dict[st
                 qty = 0
         else:
             qty = 0
-        key = normalize_sku(sku)
-        aggregated[key] = aggregated.get(key, 0) + qty
+        aggregated[asin] = aggregated.get(asin, 0) + qty
     return aggregated
 
 
@@ -100,17 +89,15 @@ def find_date_column_in_dest(ws, date_str: str) -> int:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tab", required=True, help="転記先タブ名 (例: 'マウスピース(在庫)', 'DS-01 (在庫) ')")
+    parser.add_argument("--tab", required=True)
     parser.add_argument("--date",
-                        default=datetime.date.today().strftime("%Y-%m-%d"),
-                        help="記録日付 (YYYY-MM-DD)。デフォルト: 今日")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="書き込みせず、集計結果のみ表示")
+                        default=datetime.date.today().strftime("%Y-%m-%d"))
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     settings = Settings()
     if not settings.google_credentials_file or not settings.google_spreadsheet_id:
-        print("エラー: .env を確認してください", file=sys.stderr)
+        print("エラー: .env を確認", file=sys.stderr)
         sys.exit(1)
 
     blocks = get_blocks(args.tab)
@@ -127,20 +114,20 @@ def main():
     )
     gc = gspread.authorize(creds)
 
-    print(f"=== [{args.tab}] FBA在庫実績 転記 [{args.date}] ===", file=sys.stderr)
+    print(f"=== [{args.tab}] FBA在庫実績 転記(ASIN) [{args.date}] ===", file=sys.stderr)
 
-    # 1. 元シートから指定日の在庫を取得（SKU正規化）
-    by_norm = read_source_inventory(gc, settings.google_spreadsheet_id, args.date)
-    print(f"元シート: {len(by_norm)}個の正規化SKUを集計", file=sys.stderr)
+    # 1. 元シートから指定日の ASIN→在庫合算
+    by_asin = read_source_inventory_by_asin(gc, settings.google_spreadsheet_id, args.date)
+    print(f"元シート: {len(by_asin)}個のASINを集計", file=sys.stderr)
 
-    # 2. ブロックごとに集計（商品コードと完全一致するSKUのみ）
-    print(f"\n=== 商品コードごとの集計 ===", file=sys.stderr)
+    # 2. ブロックの asin で集計
+    print(f"\n=== ASIN→商品コード 集計 ===", file=sys.stderr)
     block_totals: Dict[str, int] = {}
     for blk in blocks:
-        norm_code = normalize_sku(blk["code"])
-        total = by_norm.get(norm_code, 0)
+        asin = blk["asin"]
+        total = by_asin.get(asin, 0)
         block_totals[blk["code"]] = total
-        print(f"  {blk['code']}: {total}", file=sys.stderr)
+        print(f"  {blk['code']} ({asin}): {total}", file=sys.stderr)
 
     if args.dry_run:
         print("\n[dry-run] 書き込みスキップ", file=sys.stderr)
