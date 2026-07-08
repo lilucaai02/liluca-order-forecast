@@ -1,17 +1,34 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:python-amazon-sp-api.readthedocs.io)",
-      "Bash(python3 -c \"import json,sys; data=json.load\\(sys.stdin\\); print\\(data[0][''text'']\\)\")",
-      "Bash(pip install -e \".[dev]\")",
-      "Bash(brew list --versions python)",
-      "Bash(python3 -m pip install -e \".[dev]\")",
-      "Bash(python3 -m pip install --upgrade pip)",
-      "Bash(python3 -m pip install -e \"/Users/aililuca/amazon[dev]\")",
-      "Bash(python3 -m pytest tests/ -v)",
-      "Bash(git -C /Users/aililuca/amazon init)",
-      "Bash(git -C /Users/aililuca/amazon add -A)",
-      "Bash(git -C /Users/aililuca/amazon status)"
+      "Bash(python3 -c \":*)",
+      "Bash(python get_refresh_token.py)",
+      "Bash(lsof -ti:9000)",
+      "Bash(xargs kill:*)",
+      "Bash(grep -E \"\\\\.py$\")",
+      "Bash(grep -o 'url: https://sellercentral[^$]*' \"/Users/aililuca/.claude/projects/-Users-aililuca-amazon/c710a0f4-53c1-454b-bf14-4f010471d9a2/tool-results/mcp-Claude_in_Chrome-read_network_requests-1775226542802.txt\")",
+      "Bash(pkill -f oauth_server)",
+      "Bash(python cli.py accounts)",
+      "Bash(SANDBOX_MODE=true python3 cli.py status --marketplace amazon --account coconem)",
+      "Bash(ipconfig getifaddr:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(ngrok version:*)",
+      "Bash(/usr/local/bin/ngrok config:*)",
+      "Read(//usr/local/bin/**)",
+      "Read(//usr/**)",
+      "Skill(schedule)",
+      "Skill(schedule:*)",
+      "Bash(crontab -l)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__Claude_in_Chrome__navigate",
+      "mcp__Claude_in_Chrome__computer",
+      "Bash(find ~/amazon ~/Downloads ~/Desktop -name \"*.json\" 2>/dev/null | grep -i \"amazon\\\\|sheets\\\\|service\\\\|gservice\" | head -10 *)",
+      "Bash(cp ~/Downloads/amazon-ad-492309-233123d63b53.json ~/amazon/service-account.json && echo \"コピー完了\")",
+      "mcp__Claude_in_Chrome__javascript_tool",
+      "mcp__Claude_in_Chrome__list_connected_browsers",
+      "mcp__Claude_in_Chrome__select_browser",
+      "mcp__Claude_in_Chrome__get_page_text",
+      "Bash(cat /tmp/test_all_tabs.log | grep -E \"^---|^---|販売実績|セル書き|エラー|集計|商品コード\" | head -100)"
     ]
   }
 }
