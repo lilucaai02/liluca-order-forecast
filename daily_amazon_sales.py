@@ -46,6 +46,34 @@ SHEET_NAME = "日次Amazon販売推移"
 SalesKey = Tuple[str, str]
 
 
+def with_retry(fn, *args, **kwargs):
+    """Sheets API の 429 (quota超過) を指数バックオフでリトライ。
+
+    注意: gspread の batch_update は渡した data の range をシート名付きに
+    書き換える（破壊的変更）ため、リトライで同じリストを再利用してはいけない。
+    batch_update をリトライする場合は retry_batch_update() を使うこと。
+    """
+    import time
+    from gspread.exceptions import APIError
+    delay = 30
+    for attempt in range(6):
+        try:
+            return fn(*args, **kwargs)
+        except APIError as e:
+            if "429" in str(e) and attempt < 5:
+                print(f"  [quota超過] {delay}秒待機してリトライ ({attempt + 1}/5)",
+                      file=sys.stderr)
+                time.sleep(delay)
+                delay = min(delay * 2, 120)
+            else:
+                raise
+
+
+def retry_batch_update(ws, chunk, **kwargs):
+    """batch_update 専用リトライ。毎試行で chunk のコピーを渡す。"""
+    return with_retry(lambda: ws.batch_update([dict(u) for u in chunk], **kwargs))
+
+
 def collect_asin_sku_map(settings: Settings) -> Dict[SalesKey, List[str]]:
     """
     各アカウントの FBA 在庫から (ASIN, アカウント) → [SKU リスト] を構築。
@@ -145,8 +173,8 @@ def ensure_sheet(spreadsheet, row_count: int):
 
 def read_existing_keys(ws) -> List[SalesKey]:
     """A列(ASIN), B列(アカウント)からペアを順序保持で取得。"""
-    col_a = ws.col_values(1)
-    col_b = ws.col_values(2)
+    col_a = with_retry(ws.col_values, 1)
+    col_b = with_retry(ws.col_values, 2)
     keys: List[SalesKey] = []
     n = max(len(col_a), len(col_b))
     for i in range(1, n):
@@ -172,7 +200,7 @@ def append_new_key_rows(ws, new_keys: List[SalesKey],
     if end_row > ws.row_count:
         ws.add_rows(end_row - ws.row_count + 100)
     rng = f"A{start_row}:C{end_row}"
-    ws.update(range_name=rng, values=block)
+    with_retry(ws.update, range_name=rng, values=block)
     print(f"新規(ASIN,アカウント)ペア {len(new_keys)}件 を追加（{start_row}〜{end_row}行）",
           file=sys.stderr)
 
@@ -191,12 +219,12 @@ def update_sku_column(ws, all_keys: List[SalesKey],
         BATCH = 200
         for i in range(0, len(updates), BATCH):
             chunk = updates[i:i + BATCH]
-            ws.batch_update(chunk, value_input_option='USER_ENTERED')
+            retry_batch_update(ws, chunk, value_input_option='USER_ENTERED')
 
 
 def get_date_columns(ws) -> Dict[str, int]:
     """1行目から日付文字列→列番号のマップを返す（D列以降）。"""
-    row1 = ws.row_values(1)
+    row1 = with_retry(ws.row_values, 1)
     result: Dict[str, int] = {}
     for i, v in enumerate(row1, start=1):
         if i < 4:  # A,B,C は固定列
@@ -230,7 +258,7 @@ def write_sales(
 
     # 日付列
     date_cols = get_date_columns(ws)
-    row1 = ws.row_values(1)
+    row1 = with_retry(ws.row_values, 1)
     next_col = max(len(row1) + 1, 4)
     new_date_updates = []
     for d in dates:
@@ -241,7 +269,7 @@ def write_sales(
     if new_date_updates:
         if next_col - 1 > ws.col_count:
             ws.add_cols((next_col - 1) - ws.col_count + 10)
-        ws.batch_update(new_date_updates, value_input_option='USER_ENTERED')
+        retry_batch_update(ws, new_date_updates, value_input_option='USER_ENTERED')
         print(f"新規日付列 {len(new_date_updates)}件 を追加", file=sys.stderr)
 
     # 行番号マッピング
@@ -262,7 +290,7 @@ def write_sales(
         BATCH = 200
         for i in range(0, len(updates), BATCH):
             chunk = updates[i:i + BATCH]
-            ws.batch_update(chunk, value_input_option='USER_ENTERED')
+            retry_batch_update(ws, chunk, value_input_option='USER_ENTERED')
         print(f"→ {len(updates)}セル書き込み（販売 {len(sales)}件 + 0埋め）",
               file=sys.stderr)
 

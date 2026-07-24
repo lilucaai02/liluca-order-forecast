@@ -16,6 +16,7 @@ tab_blocks_config.py 用の Python 辞書形式で出力する。
 
 from __future__ import annotations
 
+import argparse
 import os
 import re
 import sys
@@ -24,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config.settings import Settings
 
-DEST_SPREADSHEET_ID = "1mbZlalllDfJDbUmxUx-DNe3Q9uv1cEIhqE4PqFN6C7U"
+DEFAULT_DEST_SPREADSHEET_ID = "1mbZlalllDfJDbUmxUx-DNe3Q9uv1cEIhqE4PqFN6C7U"
 
 # 対象タブ名（全11タブ。楽天行追加のため全タブを再スキャン）
 TARGET_TABS = [
@@ -74,6 +75,10 @@ def detect_blocks(col_a: list[str], tab_name: str) -> list[dict]:
             "楽天販売実績": "rakuten_sales_row",
             "RSL在庫予想": "rsl_forecast_row",
             "RSL在庫実績": "rsl_stock_row",
+            "Yahoo販売予想": "yahoo_sales_forecast_row",
+            "Yahoo販売実績": "yahoo_sales_row",
+            "Stock Crew在庫予想": "stock_crew_forecast_row",
+            "Stock Crew在庫実績": "stock_crew_stock_row",
         }
         labels_to_find = {**required_labels, **optional_labels}
         for r in range(asin_row, end_row + 1):
@@ -132,21 +137,30 @@ def format_block_py(blk: dict) -> str:
     )
     # 楽天系
     rk = []
-    if "rakuten_sales_forecast_row" in blk:
-        rk.append(f'"rakuten_sales_forecast_row": {blk["rakuten_sales_forecast_row"]}')
-    if "rakuten_sales_row" in blk:
-        rk.append(f'"rakuten_sales_row": {blk["rakuten_sales_row"]}')
-    if "rsl_forecast_row" in blk:
-        rk.append(f'"rsl_forecast_row": {blk["rsl_forecast_row"]}')
-    if "rsl_stock_row" in blk:
-        rk.append(f'"rsl_stock_row": {blk["rsl_stock_row"]}')
+    for k in ("rakuten_sales_forecast_row", "rakuten_sales_row",
+              "rsl_forecast_row", "rsl_stock_row"):
+        if k in blk:
+            rk.append(f'"{k}": {blk[k]}')
+    # Yahoo系
+    yh = []
+    for k in ("yahoo_sales_forecast_row", "yahoo_sales_row",
+              "stock_crew_forecast_row", "stock_crew_stock_row"):
+        if k in blk:
+            yh.append(f'"{k}": {blk[k]}')
+    extras = []
     if rk:
-        return base + ',\n         ' + ', '.join(rk) + '},'
-    else:
-        return base + '},'
+        extras.append(',\n         ' + ', '.join(rk))
+    if yh:
+        extras.append(',\n         ' + ', '.join(yh))
+    return base + ''.join(extras) + '},'
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dest-id", default=DEFAULT_DEST_SPREADSHEET_ID,
+                        help="対象スプレッドシートID")
+    args = parser.parse_args()
+
     settings = Settings()
     if not settings.google_credentials_file:
         print("エラー: .env を確認", file=sys.stderr)
@@ -163,7 +177,8 @@ def main():
         ],
     )
     gc = gspread.authorize(creds)
-    sp = gc.open_by_key(DEST_SPREADSHEET_ID)
+    sp = gc.open_by_key(args.dest_id)
+    print(f"# 対象: {sp.title} ({args.dest_id})", file=sys.stderr)
 
     summary = []  # [(tab, [block dicts])]
     print("# === scan_tab_structure.py 出力 ===")

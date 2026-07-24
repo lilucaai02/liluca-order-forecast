@@ -1,9 +1,17 @@
 """
-発注予測スプレッドシート (1mbZla...) の商品別タブのブロック構造定義。
-scan_tab_structure.py で自動生成。楽天行は任意。
+発注予測コピー(大島用) スプレッドシート専用のタブブロック定義。
+
+転記先: 1MzyWaqefWZvHcR4nHSrfzgwXaBA4oe-E9MlfhNjZTAU
+自動生成: scan_tab_structure.py --dest-id 1MzyWaqefWZvHcR4nHSrfzgwXaBA4oe-E9MlfhNjZTAU
 """
 
-TAB_BLOCKS = {
+from __future__ import annotations
+
+OSHIMA_TAB_BLOCKS: dict[str, list[dict]] = {
+
+    # ============================================================
+    # マウスピース(在庫)
+    # ============================================================
     "マウスピース(在庫)": [
         {"code": "MP-02MHD", "asin": "B0B79Q5N3F",
          "asin_row": 1, "code_row": 3,
@@ -48,22 +56,32 @@ TAB_BLOCKS = {
          "rakuten_sales_forecast_row": 270, "rakuten_sales_row": 271, "rsl_forecast_row": 278, "rsl_stock_row": 279,
          "yahoo_sales_forecast_row": 272, "yahoo_sales_row": 273, "stock_crew_forecast_row": 280, "stock_crew_stock_row": 281},
         {"code": "MP-04", "asin": "B0GFDT327F",
-         "asin_row": 312, "code_row": 313,
-         "sales_forecast_row": 319, "sales_row": 320,
-         "forecast_row": 327, "stock_row": 328,
-         "change_qty_row": 348, "from_row": 349, "to_row": 350,
-         "rakuten_sales_forecast_row": 321, "rakuten_sales_row": 322, "rsl_forecast_row": 329, "rsl_stock_row": 330,
-         "yahoo_sales_forecast_row": 323, "yahoo_sales_row": 324, "stock_crew_forecast_row": 331, "stock_crew_stock_row": 332},
+         "asin_row": 314, "code_row": 315,
+         "sales_forecast_row": 321, "sales_row": 322,
+         "forecast_row": 329, "stock_row": 330,
+         "change_qty_row": 350, "from_row": 351, "to_row": 352,
+         "rakuten_sales_forecast_row": 323, "rakuten_sales_row": 324, "rsl_forecast_row": 331, "rsl_stock_row": 332,
+         "yahoo_sales_forecast_row": 325, "yahoo_sales_row": 326, "stock_crew_forecast_row": 333, "stock_crew_stock_row": 334},
     ],
+    # ============================================================
+    # DS-01 (在庫) 
+    # ============================================================
+    # 2026-07-24: 行挿入履歴
+    #   R7  アマゾンイベント長沼 (+1)
+    #   R8,R9 直近7日/過去30日セール以外平均 (+2)
+    #   R11 アマゾンイベント係数長沼 (+1)  → 元の構造から計 +4
     "DS-01 (在庫) ": [
         {"code": "DS-01", "asin": "B0BSRPRN3S",
          "asin_row": 1, "code_row": 3,
-         "sales_forecast_row": 11, "sales_row": 12,
-         "forecast_row": 19, "stock_row": 20,
-         "change_qty_row": 39, "from_row": 40, "to_row": 41,
-         "rakuten_sales_forecast_row": 13, "rakuten_sales_row": 14, "rsl_forecast_row": 21, "rsl_stock_row": 22,
-         "yahoo_sales_forecast_row": 15, "yahoo_sales_row": 16, "stock_crew_forecast_row": 23, "stock_crew_stock_row": 24},
+         "sales_forecast_row": 13, "sales_row": 14,
+         "forecast_row": 21, "stock_row": 22,
+         "change_qty_row": 43, "from_row": 44, "to_row": 45,
+         "rakuten_sales_forecast_row": 15, "rakuten_sales_row": 16, "rsl_forecast_row": 23, "rsl_stock_row": 24,
+         "yahoo_sales_forecast_row": 17, "yahoo_sales_row": 18, "stock_crew_forecast_row": 25, "stock_crew_stock_row": 26},
     ],
+    # ============================================================
+    # GC-01(在庫)
+    # ============================================================
     "GC-01(在庫)": [
         {"code": "gc-01s-35", "asin": "B0D5B8QS41",
          "asin_row": 1, "code_row": 3,
@@ -122,8 +140,11 @@ TAB_BLOCKS = {
          "rakuten_sales_forecast_row": 383, "rakuten_sales_row": 384, "rsl_forecast_row": 391, "rsl_stock_row": 392,
          "yahoo_sales_forecast_row": 385, "yahoo_sales_row": 386, "stock_crew_forecast_row": 393, "stock_crew_stock_row": 394},
     ],
+    # ============================================================
+    # GC-02(在庫)
+    # ============================================================
     "GC-02(在庫)": [
-        {"code": "gc-02rainbow-35", "asin": "B0G58F4Y8H",
+        {"code": "gc-02rainbow-35", "asin": "B0H5BKG18D",
          "asin_row": 1, "code_row": 3,
          "sales_forecast_row": 9, "sales_row": 10,
          "forecast_row": 17, "stock_row": 18,
@@ -131,6 +152,9 @@ TAB_BLOCKS = {
          "rakuten_sales_forecast_row": 11, "rakuten_sales_row": 12, "rsl_forecast_row": 19, "rsl_stock_row": 20,
          "yahoo_sales_forecast_row": 13, "yahoo_sales_row": 14, "stock_crew_forecast_row": 21, "stock_crew_stock_row": 22},
     ],
+    # ============================================================
+    # TG-01(在庫)
+    # ============================================================
     "TG-01(在庫)": [
         {"code": "TG-01m", "asin": "B0BKG1GN3W",
          "asin_row": 1, "code_row": 3,
@@ -273,6 +297,9 @@ TAB_BLOCKS = {
          "rakuten_sales_forecast_row": 999, "rakuten_sales_row": 1000, "rsl_forecast_row": 1007, "rsl_stock_row": 1008,
          "yahoo_sales_forecast_row": 1001, "yahoo_sales_row": 1002, "stock_crew_forecast_row": 1009, "stock_crew_stock_row": 1010},
     ],
+    # ============================================================
+    # TG-02(在庫)
+    # ============================================================
     "TG-02(在庫)": [
         {"code": "tg-01s-short", "asin": "B0DT5TYMZT",
          "asin_row": 1, "code_row": 3,
@@ -303,6 +330,9 @@ TAB_BLOCKS = {
          "rakuten_sales_forecast_row": 167, "rakuten_sales_row": 168, "rsl_forecast_row": 175, "rsl_stock_row": 176,
          "yahoo_sales_forecast_row": 169, "yahoo_sales_row": 170, "stock_crew_forecast_row": 177, "stock_crew_stock_row": 178},
     ],
+    # ============================================================
+    # PCI-01
+    # ============================================================
     "PCI-01": [
         {"code": "pci-01bluegray", "asin": "B09STPFMM2",
          "asin_row": 1, "code_row": 3,
@@ -354,6 +384,9 @@ TAB_BLOCKS = {
          "rakuten_sales_forecast_row": 323, "rakuten_sales_row": 324, "rsl_forecast_row": 331, "rsl_stock_row": 332,
          "yahoo_sales_forecast_row": 325, "yahoo_sales_row": 326, "stock_crew_forecast_row": 333, "stock_crew_stock_row": 334},
     ],
+    # ============================================================
+    # WB-01(在庫)
+    # ============================================================
     "WB-01(在庫)": [
         {"code": "S", "asin": "B0FJR5GCK3",
          "asin_row": 1, "code_row": 3,
@@ -384,36 +417,42 @@ TAB_BLOCKS = {
          "rakuten_sales_forecast_row": 158, "rakuten_sales_row": 159, "rsl_forecast_row": 166, "rsl_stock_row": 167,
          "yahoo_sales_forecast_row": 160, "yahoo_sales_row": 161},
     ],
+    # ============================================================
+    # WB-02
+    # ============================================================
     "WB-02": [
         {"code": "WB-02S", "asin": "B0GN66ZW1C",
          "asin_row": 1, "code_row": 3,
          "sales_forecast_row": 9, "sales_row": 10,
          "forecast_row": 17, "stock_row": 18,
-         "change_qty_row": 36, "from_row": 37, "to_row": 38,
+         "change_qty_row": 38, "from_row": 39, "to_row": 40,
          "rakuten_sales_forecast_row": 11, "rakuten_sales_row": 12, "rsl_forecast_row": 19, "rsl_stock_row": 20,
-         "yahoo_sales_forecast_row": 13, "yahoo_sales_row": 14},
+         "yahoo_sales_forecast_row": 13, "yahoo_sales_row": 14, "stock_crew_forecast_row": 21, "stock_crew_stock_row": 22},
         {"code": "WB-02M", "asin": "B0GN624J8G",
-         "asin_row": 51, "code_row": 52,
-         "sales_forecast_row": 58, "sales_row": 59,
-         "forecast_row": 66, "stock_row": 67,
-         "change_qty_row": 85, "from_row": 86, "to_row": 87,
-         "rakuten_sales_forecast_row": 60, "rakuten_sales_row": 61, "rsl_forecast_row": 68, "rsl_stock_row": 69,
-         "yahoo_sales_forecast_row": 62, "yahoo_sales_row": 63},
+         "asin_row": 55, "code_row": 56,
+         "sales_forecast_row": 62, "sales_row": 63,
+         "forecast_row": 70, "stock_row": 71,
+         "change_qty_row": 91, "from_row": 92, "to_row": 93,
+         "rakuten_sales_forecast_row": 64, "rakuten_sales_row": 65, "rsl_forecast_row": 72, "rsl_stock_row": 73,
+         "yahoo_sales_forecast_row": 66, "yahoo_sales_row": 67, "stock_crew_forecast_row": 74, "stock_crew_stock_row": 75},
         {"code": "WB-02L", "asin": "B0GN61ZL7S",
-         "asin_row": 100, "code_row": 101,
-         "sales_forecast_row": 107, "sales_row": 108,
-         "forecast_row": 115, "stock_row": 116,
-         "change_qty_row": 134, "from_row": 135, "to_row": 136,
-         "rakuten_sales_forecast_row": 109, "rakuten_sales_row": 110, "rsl_forecast_row": 117, "rsl_stock_row": 118,
-         "yahoo_sales_forecast_row": 111, "yahoo_sales_row": 112},
+         "asin_row": 108, "code_row": 109,
+         "sales_forecast_row": 115, "sales_row": 116,
+         "forecast_row": 123, "stock_row": 124,
+         "change_qty_row": 144, "from_row": 145, "to_row": 146,
+         "rakuten_sales_forecast_row": 117, "rakuten_sales_row": 118, "rsl_forecast_row": 125, "rsl_stock_row": 126,
+         "yahoo_sales_forecast_row": 119, "yahoo_sales_row": 120, "stock_crew_forecast_row": 127, "stock_crew_stock_row": 128},
         {"code": "WB-02XL", "asin": "B0GN7J79BZ",
-         "asin_row": 149, "code_row": 150,
-         "sales_forecast_row": 156, "sales_row": 157,
-         "forecast_row": 164, "stock_row": 165,
-         "change_qty_row": 183, "from_row": 184, "to_row": 185,
-         "rakuten_sales_forecast_row": 158, "rakuten_sales_row": 159, "rsl_forecast_row": 166, "rsl_stock_row": 167,
-         "yahoo_sales_forecast_row": 160, "yahoo_sales_row": 161},
+         "asin_row": 161, "code_row": 162,
+         "sales_forecast_row": 168, "sales_row": 169,
+         "forecast_row": 176, "stock_row": 177,
+         "change_qty_row": 197, "from_row": 198, "to_row": 199,
+         "rakuten_sales_forecast_row": 170, "rakuten_sales_row": 171, "rsl_forecast_row": 178, "rsl_stock_row": 179,
+         "yahoo_sales_forecast_row": 172, "yahoo_sales_row": 173, "stock_crew_forecast_row": 180, "stock_crew_stock_row": 181},
     ],
+    # ============================================================
+    # TS-01
+    # ============================================================
     "TS-01": [
         {"code": "ts-01mw", "asin": "B0D3PC4MY9",
          "asin_row": 1, "code_row": 3,
@@ -426,37 +465,40 @@ TAB_BLOCKS = {
          "asin_row": 51, "code_row": 52,
          "sales_forecast_row": 58, "sales_row": 59,
          "forecast_row": 66, "stock_row": 67,
-         "change_qty_row": 85, "from_row": 86, "to_row": 87,
+         "change_qty_row": 87, "from_row": 88, "to_row": 89,
          "rakuten_sales_forecast_row": 60, "rakuten_sales_row": 61, "rsl_forecast_row": 68, "rsl_stock_row": 69,
-         "yahoo_sales_forecast_row": 62, "yahoo_sales_row": 63},
+         "yahoo_sales_forecast_row": 62, "yahoo_sales_row": 63, "stock_crew_forecast_row": 70, "stock_crew_stock_row": 71},
     ],
+    # ============================================================
+    # PG-01
+    # ============================================================
     "PG-01": [
         {"code": "pg-01s", "asin": "B0GXDTV4SN",
          "asin_row": 1, "code_row": 3,
          "sales_forecast_row": 9, "sales_row": 10,
          "forecast_row": 17, "stock_row": 18,
-         "change_qty_row": 36, "from_row": 37, "to_row": 38,
+         "change_qty_row": 38, "from_row": 39, "to_row": 40,
          "rakuten_sales_forecast_row": 11, "rakuten_sales_row": 12, "rsl_forecast_row": 19, "rsl_stock_row": 20,
-         "yahoo_sales_forecast_row": 13, "yahoo_sales_row": 14},
-        {"code": "pg-01m", "asin": "B0GXDMXSZ4",
-         "asin_row": 51, "code_row": 52,
-         "sales_forecast_row": 58, "sales_row": 59,
-         "forecast_row": 66, "stock_row": 67,
-         "change_qty_row": 85, "from_row": 86, "to_row": 87,
-         "rakuten_sales_forecast_row": 60, "rakuten_sales_row": 61, "rsl_forecast_row": 68, "rsl_stock_row": 69,
-         "yahoo_sales_forecast_row": 62, "yahoo_sales_row": 63},
-        {"code": "pg-01l", "asin": "B0GXDPF1VK",
-         "asin_row": 100, "code_row": 101,
-         "sales_forecast_row": 107, "sales_row": 108,
-         "forecast_row": 115, "stock_row": 116,
-         "change_qty_row": 134, "from_row": 135, "to_row": 136,
-         "rakuten_sales_forecast_row": 109, "rakuten_sales_row": 110, "rsl_forecast_row": 117, "rsl_stock_row": 118,
-         "yahoo_sales_forecast_row": 111, "yahoo_sales_row": 112},
+         "yahoo_sales_forecast_row": 13, "yahoo_sales_row": 14, "stock_crew_forecast_row": 21, "stock_crew_stock_row": 22},
+        {"code": "pg-01ml", "asin": "B0GXDMXSZ4",
+         "asin_row": 55, "code_row": 56,
+         "sales_forecast_row": 62, "sales_row": 63,
+         "forecast_row": 70, "stock_row": 71,
+         "change_qty_row": 91, "from_row": 92, "to_row": 93,
+         "rakuten_sales_forecast_row": 64, "rakuten_sales_row": 65, "rsl_forecast_row": 72, "rsl_stock_row": 73,
+         "yahoo_sales_forecast_row": 66, "yahoo_sales_row": 67, "stock_crew_forecast_row": 74, "stock_crew_stock_row": 75},
+        {"code": "pg-01xl", "asin": "B0GXDPF1VK",
+         "asin_row": 108, "code_row": 109,
+         "sales_forecast_row": 115, "sales_row": 116,
+         "forecast_row": 123, "stock_row": 124,
+         "change_qty_row": 144, "from_row": 145, "to_row": 146,
+         "rakuten_sales_forecast_row": 117, "rakuten_sales_row": 118, "rsl_forecast_row": 125, "rsl_stock_row": 126,
+         "yahoo_sales_forecast_row": 119, "yahoo_sales_row": 120, "stock_crew_forecast_row": 127, "stock_crew_stock_row": 128},
     ],
 }
 
 
-def get_blocks(tab_name: str):
-    if tab_name not in TAB_BLOCKS:
-        raise ValueError(f"未定義のタブ: '{tab_name}'。既存: {list(TAB_BLOCKS.keys())}")
-    return TAB_BLOCKS[tab_name]
+def get_blocks(tab_name: str) -> list[dict]:
+    if tab_name not in OSHIMA_TAB_BLOCKS:
+        raise KeyError(f"タブ '{tab_name}' は OSHIMA_TAB_BLOCKS に未登録")
+    return OSHIMA_TAB_BLOCKS[tab_name]
