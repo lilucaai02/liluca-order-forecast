@@ -68,16 +68,18 @@ OSHIMA_TAB_BLOCKS: dict[str, list[dict]] = {
     # ============================================================
     # 2026-07-24: 行挿入履歴
     #   R7  アマゾンイベント長沼 (+1)
-    #   R8,R9 直近7日/過去30日セール以外平均 (+2)
-    #   R11 アマゾンイベント係数長沼 (+1)  → 元の構造から計 +4
+    #   R8,R9 直近7平日/過去30日セール以外平均 (+2)
+    #   R11 アマゾンイベント係数長沼 (+1)
+    #   R14,R15 アマゾン長沼予想７日/３０日 (+2)
+    #   R24,R25 在庫予想長沼７日/３０日 (+2)  → 元の構造から計 +8
     "DS-01 (在庫) ": [
         {"code": "DS-01", "asin": "B0BSRPRN3S",
          "asin_row": 1, "code_row": 3,
-         "sales_forecast_row": 13, "sales_row": 14,
-         "forecast_row": 21, "stock_row": 22,
-         "change_qty_row": 43, "from_row": 44, "to_row": 45,
-         "rakuten_sales_forecast_row": 15, "rakuten_sales_row": 16, "rsl_forecast_row": 23, "rsl_stock_row": 24,
-         "yahoo_sales_forecast_row": 17, "yahoo_sales_row": 18, "stock_crew_forecast_row": 25, "stock_crew_stock_row": 26},
+         "sales_forecast_row": 13, "sales_row": 16,
+         "forecast_row": 23, "stock_row": 26,
+         "change_qty_row": 47, "from_row": 48, "to_row": 49,
+         "rakuten_sales_forecast_row": 17, "rakuten_sales_row": 18, "rsl_forecast_row": 27, "rsl_stock_row": 28,
+         "yahoo_sales_forecast_row": 19, "yahoo_sales_row": 20, "stock_crew_forecast_row": 29, "stock_crew_stock_row": 30},
     ],
     # ============================================================
     # GC-01(在庫)
