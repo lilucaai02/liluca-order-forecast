@@ -106,6 +106,14 @@ for tab in TABS:
                 else:
                     cur = [d, d, lab[d]]
                     periods.append(cur)
+            if ch == "Amazon":
+                # セラー設定のタイムセールのみ (Amazon側イベントは別カウント)
+                tsale = [p for p in periods
+                         if p[2] == "タイムセール"
+                         or (("タイムセール" in p[2]) and ("祭" not in p[2]))]
+                other = [p for p in periods if p not in tsale]
+                rec["Amazon_other_n"] = len(other)
+                periods = tsale
             n = len(periods)
             rec[f"{ch}_n"] = n
             rec[f"{ch}_last"] = periods[-1][1].strftime("%Y/%m/%d") if n else ""
@@ -143,16 +151,19 @@ else:
     ws2 = old
     print("既存シートを更新")
 
-hdr = ["タブ", "商品", "Amazonセール回数", "Amazon直近セール", "Amazon平均間隔(日)",
-       "Amazon直近5回係数平均", "楽天セール回数", "楽天直近セール",
-       "Yahooセール回数", "Yahoo直近セール", "更新日"]
+hdr = ["タブ", "商品", "タイムセール回数\n(セラー設定)", "直近タイムセール",
+       "平均間隔(日)", "直近5回係数平均", "その他Amazonイベント回数",
+       "楽天セール回数", "楽天直近セール", "Yahooセール回数", "Yahoo直近セール",
+       "更新日"]
 data = [hdr]
 for r in rows_out:
     data.append([r["tab"], r["code"], r["Amazon_n"], r["Amazon_last"],
                  r["Amazon_gap"], r.get("Amazon_coef", ""),
+                 r.get("Amazon_other_n", 0),
                  r["楽天_n"], r["楽天_last"], r["Yahoo_n"], r["Yahoo_last"],
                  today.strftime("%Y/%m/%d") if r is rows_out[0] else ""])
-retry(ws2.update, range_name=f"A1:K{len(data)}", values=data,
+retry(ws2.clear)
+retry(ws2.update, range_name=f"A1:L{len(data)}", values=data,
       value_input_option='USER_ENTERED')
 # ヘッダー書式 + 回数降順の把握用に太字
 retry(sp.batch_update, {"requests": [
