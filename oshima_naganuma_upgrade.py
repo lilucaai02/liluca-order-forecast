@@ -134,12 +134,19 @@ def main():
     def a(row):
         return col_a[row - 1].strip() if row - 1 < len(col_a) else ""
 
-    # ブロック構造検証 (元の行番号)
+    # ブロック構造検証 (元の行番号)。amazonイベント行はラベル検索で特定
+    # (GC-01等はブロック内に追加行があり F-3 とは限らない)
+    def find_event_row(asin_row, F):
+        for r in range(asin_row, F):
+            if a(r) == "amazonイベント":
+                return r
+        raise AssertionError(f"amazonイベント行が見つからない (R{asin_row}〜R{F})")
+
     for blk in blocks:
         F = blk["sales_forecast_row"]      # amazon販売予想
-        E = F - 3                          # amazonイベント
+        E = find_event_row(blk["asin_row"], F)
+        blk["_event_row"] = E
         G = blk["forecast_row"]            # FBA在庫予想
-        assert a(E) == "amazonイベント", f"{blk['code']}: R{E}={a(E)!r}"
         assert a(E + 1) == "amazonイベント係数", f"{blk['code']}: R{E+1}"
         assert a(F) == "amazon販売予想", f"{blk['code']}: R{F}"
         assert a(G) == "FBA在庫予想", f"{blk['code']}: R{G}"
@@ -195,7 +202,7 @@ def main():
         ins = []  # (startIndex_0based, count)
         for blk in blocks:
             F = blk["sales_forecast_row"]
-            E = F - 3
+            E = blk["_event_row"]
             K = E + 1
             G = blk["forecast_row"]
             ins += [(G, 2), (F, 2), (K, 1), (E, 3)]
@@ -224,8 +231,9 @@ def main():
     for i, blk in enumerate(blocks):
         S = 8 * i
         F = blk["sales_forecast_row"]
-        E, K, G = F - 3, F - 2, blk["forecast_row"]
-        d = dict(blk)
+        E, G = blk["_event_row"], blk["forecast_row"]
+        K = E + 1
+        d = {k: v for k, v in blk.items() if not k.startswith("_")}
         for key in list(d.keys()):
             if key.endswith("_row"):
                 d[key] = remap(d[key], E, K, F, G, S)
@@ -235,8 +243,8 @@ def main():
         d["_avg7"] = E + S + 2
         d["_avg30"] = E + S + 3
         d["_coef"] = E + S + 5           # 係数長沼
-        d["_f7"] = E + S + 8             # 長沼予想7日
-        d["_f30"] = E + S + 9
+        d["_f7"] = d["sales_forecast_row"] + 1   # 長沼予想7日 (=販売予想の直下)
+        d["_f30"] = d["sales_forecast_row"] + 2
         d["_inv_fc"] = G + S + 6         # FBA在庫予想
         d["_i7"] = G + S + 7
         d["_i30"] = G + S + 8

@@ -83,9 +83,18 @@ def main():
         return col_a[r - 1].strip() if r - 1 < len(col_a) else ""
 
     # 検証: 現構造 (長沼アップグレード済み前提)
+    # amazonイベント行はラベル検索 (GC-01等はブロック内の行数が異なるため)
     for blk in blocks:
         F = blk["sales_forecast_row"]
         G = blk["forecast_row"]
+        E = None
+        for r in range(blk["asin_row"], F):
+            if a(r) == "amazonイベント":
+                E = r
+                break
+        assert E, f"{blk['code']}: amazonイベント行なし"
+        blk["_event_row"] = E
+        assert a(E + 1) == "アマゾンイベント長沼", f"{blk['code']}: R{E+1}={a(E+1)!r}"
         assert a(F) == "amazon販売予想", f"{blk['code']}: R{F}={a(F)!r}"
         assert a(F + 1) == "アマゾン長沼予想７日", f"{blk['code']}: R{F+1}={a(F+1)!r}"
         assert a(F + 2) == "アマゾン長沼予想３０日", f"{blk['code']}: R{F+2}"
@@ -117,11 +126,11 @@ def main():
     nb = []
     for k, blk in enumerate(blocks):
         F, G = blk["sales_forecast_row"], blk["forecast_row"]
-        d = dict(blk)
+        E = blk["_event_row"]
+        d = {kk: v for kk, v in blk.items() if not kk.startswith("_")}
         for key in list(d.keys()):
             if key.endswith("_row"):
                 d[key] = shift(d[key], F, G, k)
-        E = F - 7
         d["_E"] = shift(E, F, G, k)
         d["_nag"] = shift(E + 1, F, G, k)
         d["_avg7"] = shift(E + 2, F, G, k)
