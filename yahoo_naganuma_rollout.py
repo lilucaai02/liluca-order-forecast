@@ -190,18 +190,34 @@ def main():
 
     nb = []
     for k, b in enumerate(blocks):
-        S = 5 * k
         fc = b["yahoo_sales_forecast_row"]
         d = dict(b)
-        for key in list(d.keys()):
-            if key.endswith("_row"):
-                d[key] = d[key] + S + (5 if d[key] >= fc else 0)
-        d["_yev"] = fc + S
-        d["_ywd"] = fc + S + 1
-        d["_ywv"] = fc + S + 2
-        d["_ycoef"] = fc + S + 3
-        d["_yhyb"] = fc + S + 4
+        if already:
+            # config は挿入後の行番号を既に反映済み (再実行 = 係数等の再計算のみ)
+            d["_yev"] = fc - 5
+            d["_ywd"] = fc - 4
+            d["_ywv"] = fc - 3
+            d["_ycoef"] = fc - 2
+            d["_yhyb"] = fc - 1
+        else:
+            S = 5 * k
+            for key in list(d.keys()):
+                if key.endswith("_row"):
+                    d[key] = d[key] + S + (5 if d[key] >= fc else 0)
+            d["_yev"] = fc + S
+            d["_ywd"] = fc + S + 1
+            d["_ywv"] = fc + S + 2
+            d["_ycoef"] = fc + S + 3
+            d["_yhyb"] = fc + S + 4
         nb.append(d)
+
+    if already:
+        # ラベル書き込み前に既存5行の位置を検証 (誤位置への上書き防止)
+        for d in nb:
+            assert a(d["_yev"]) == "Yahooイベント長沼", \
+                f"{d['code']}: R{d['_yev']}={a(d['_yev'])!r}"
+            assert a(d["_yhyb"]) == "Yahoo販売予測長沼", \
+                f"{d['code']}: R{d['_yhyb']}={a(d['_yhyb'])!r}"
 
     labels = []
     for d in nb:
@@ -306,7 +322,7 @@ def main():
             past = [dd for dd in sdays if day_fn(dd)
                     and dd not in event_days][-10:]
             if past and base_now:
-                return round(statistics.mean(m[dd] for dd in past) / base_now, 2)
+                return round(statistics.median(m[dd] for dd in past) / base_now, 2)
             return 1
 
         coef5 = recur_coef(is5day)
@@ -319,7 +335,7 @@ def main():
             base = baseline(d0)
             if not vals or base is None:
                 continue
-            coef = round(statistics.mean(vals) / base, 2)
+            coef = round(statistics.median(vals) / base, 2)
             per_coef[(d0, d1)] = coef
             hist.append((d1, coef))
         hist.sort()
