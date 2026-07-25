@@ -88,7 +88,7 @@ def read_sales_from_source(gc, src_spreadsheet_id: str,
 
 def find_date_columns_bulk(ws, date_strs: List[str]) -> Dict[str, int]:
     """1回の read で複数日付の列位置をまとめて解決 (quota節約)。"""
-    row1_raw = ws.get('A1:ZZ1', value_render_option='UNFORMATTED_VALUE')
+    row1_raw = ws.get('1:1', value_render_option='UNFORMATTED_VALUE')
     row1 = row1_raw[0] if row1_raw else []
     serial_to_col: Dict[int, int] = {}
     for i, v in enumerate(row1, start=1):

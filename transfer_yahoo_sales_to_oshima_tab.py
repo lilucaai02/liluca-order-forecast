@@ -91,7 +91,7 @@ def read_sales_from_source(gc, src_spreadsheet_id: str,
 def find_date_column(ws, date_str: str) -> int:
     target = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
     target_serial = (target - SERIAL_DATE_BASE).days
-    row1_raw = ws.get('A1:ZZ1', value_render_option='UNFORMATTED_VALUE')
+    row1_raw = ws.get('1:1', value_render_option='UNFORMATTED_VALUE')
     row1 = row1_raw[0] if row1_raw else []
     for i, v in enumerate(row1, start=1):
         if isinstance(v, (int, float)) and int(v) == target_serial:
