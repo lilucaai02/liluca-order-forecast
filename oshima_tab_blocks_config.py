@@ -100,57 +100,23 @@ OSHIMA_TAB_BLOCKS: dict[str, list[dict]] = {
         {"code": "L", "asin": "B0FJRCKY3C", "asin_row": 112, "code_row": 113, "sales_forecast_row": 123, "sales_row": 125, "forecast_row": 132, "stock_row": 134, "change_qty_row": 152, "from_row": 153, "to_row": 154, "rakuten_sales_forecast_row": 126, "rakuten_sales_row": 127, "rsl_forecast_row": 135, "rsl_stock_row": 136, "yahoo_sales_forecast_row": 128, "yahoo_sales_row": 129},
         {"code": "XL", "asin": "B0FJR5XYWX", "asin_row": 167, "code_row": 168, "sales_forecast_row": 178, "sales_row": 180, "forecast_row": 187, "stock_row": 189, "change_qty_row": 207, "from_row": 208, "to_row": 209, "rakuten_sales_forecast_row": 181, "rakuten_sales_row": 182, "rsl_forecast_row": 190, "rsl_stock_row": 191, "yahoo_sales_forecast_row": 183, "yahoo_sales_row": 184},
     ],
-    # 2026-07-25: 長沼行8行/ブロック挿入済み (oshima_naganuma_upgrade.py)
+    # 2026-07-25: ハイブリッド移行済み (oshima_hybrid_migration.py)
     "WB-02": [
-        {"code": "WB-02S", "asin": "B0GN66ZW1C", "asin_row": 1, "code_row": 3, "sales_forecast_row": 13, "sales_row": 16, "forecast_row": 23, "stock_row": 26, "change_qty_row": 46, "from_row": 47, "to_row": 48, "rakuten_sales_forecast_row": 17, "rakuten_sales_row": 18, "rsl_forecast_row": 27, "rsl_stock_row": 28, "yahoo_sales_forecast_row": 19, "yahoo_sales_row": 20, "stock_crew_forecast_row": 29, "stock_crew_stock_row": 30},
-        {"code": "WB-02M", "asin": "B0GN624J8G", "asin_row": 63, "code_row": 64, "sales_forecast_row": 74, "sales_row": 77, "forecast_row": 84, "stock_row": 87, "change_qty_row": 107, "from_row": 108, "to_row": 109, "rakuten_sales_forecast_row": 78, "rakuten_sales_row": 79, "rsl_forecast_row": 88, "rsl_stock_row": 89, "yahoo_sales_forecast_row": 80, "yahoo_sales_row": 81, "stock_crew_forecast_row": 90, "stock_crew_stock_row": 91},
-        {"code": "WB-02L", "asin": "B0GN61ZL7S", "asin_row": 124, "code_row": 125, "sales_forecast_row": 135, "sales_row": 138, "forecast_row": 145, "stock_row": 148, "change_qty_row": 168, "from_row": 169, "to_row": 170, "rakuten_sales_forecast_row": 139, "rakuten_sales_row": 140, "rsl_forecast_row": 149, "rsl_stock_row": 150, "yahoo_sales_forecast_row": 141, "yahoo_sales_row": 142, "stock_crew_forecast_row": 151, "stock_crew_stock_row": 152},
-        {"code": "WB-02XL", "asin": "B0GN7J79BZ", "asin_row": 185, "code_row": 186, "sales_forecast_row": 196, "sales_row": 199, "forecast_row": 206, "stock_row": 209, "change_qty_row": 229, "from_row": 230, "to_row": 231, "rakuten_sales_forecast_row": 200, "rakuten_sales_row": 201, "rsl_forecast_row": 210, "rsl_stock_row": 211, "yahoo_sales_forecast_row": 202, "yahoo_sales_row": 203, "stock_crew_forecast_row": 212, "stock_crew_stock_row": 213},
+        {"code": "WB-02S", "asin": "B0GN66ZW1C", "asin_row": 1, "code_row": 3, "sales_forecast_row": 13, "sales_row": 15, "forecast_row": 22, "stock_row": 24, "change_qty_row": 44, "from_row": 45, "to_row": 46, "rakuten_sales_forecast_row": 16, "rakuten_sales_row": 17, "rsl_forecast_row": 25, "rsl_stock_row": 26, "yahoo_sales_forecast_row": 18, "yahoo_sales_row": 19, "stock_crew_forecast_row": 27, "stock_crew_stock_row": 28},
+        {"code": "WB-02M", "asin": "B0GN624J8G", "asin_row": 61, "code_row": 62, "sales_forecast_row": 72, "sales_row": 74, "forecast_row": 81, "stock_row": 83, "change_qty_row": 103, "from_row": 104, "to_row": 105, "rakuten_sales_forecast_row": 75, "rakuten_sales_row": 76, "rsl_forecast_row": 84, "rsl_stock_row": 85, "yahoo_sales_forecast_row": 77, "yahoo_sales_row": 78, "stock_crew_forecast_row": 86, "stock_crew_stock_row": 87},
+        {"code": "WB-02L", "asin": "B0GN61ZL7S", "asin_row": 120, "code_row": 121, "sales_forecast_row": 131, "sales_row": 133, "forecast_row": 140, "stock_row": 142, "change_qty_row": 162, "from_row": 163, "to_row": 164, "rakuten_sales_forecast_row": 134, "rakuten_sales_row": 135, "rsl_forecast_row": 143, "rsl_stock_row": 144, "yahoo_sales_forecast_row": 136, "yahoo_sales_row": 137, "stock_crew_forecast_row": 145, "stock_crew_stock_row": 146},
+        {"code": "WB-02XL", "asin": "B0GN7J79BZ", "asin_row": 179, "code_row": 180, "sales_forecast_row": 190, "sales_row": 192, "forecast_row": 199, "stock_row": 201, "change_qty_row": 221, "from_row": 222, "to_row": 223, "rakuten_sales_forecast_row": 193, "rakuten_sales_row": 194, "rsl_forecast_row": 202, "rsl_stock_row": 203, "yahoo_sales_forecast_row": 195, "yahoo_sales_row": 196, "stock_crew_forecast_row": 204, "stock_crew_stock_row": 205},
     ],
-    # ============================================================
-    # TS-01
-    # ============================================================
+    # 2026-07-25: ハイブリッド移行済み (oshima_hybrid_migration.py)
     "TS-01": [
-        {"code": "ts-01mw", "asin": "B0D3PC4MY9",
-         "asin_row": 1, "code_row": 3,
-         "sales_forecast_row": 9, "sales_row": 10,
-         "forecast_row": 17, "stock_row": 18,
-         "change_qty_row": 36, "from_row": 37, "to_row": 38,
-         "rakuten_sales_forecast_row": 11, "rakuten_sales_row": 12, "rsl_forecast_row": 19, "rsl_stock_row": 20,
-         "yahoo_sales_forecast_row": 13, "yahoo_sales_row": 14},
-        {"code": "ts-02", "asin": "B0GN64ZDZR",
-         "asin_row": 51, "code_row": 52,
-         "sales_forecast_row": 58, "sales_row": 59,
-         "forecast_row": 66, "stock_row": 67,
-         "change_qty_row": 87, "from_row": 88, "to_row": 89,
-         "rakuten_sales_forecast_row": 60, "rakuten_sales_row": 61, "rsl_forecast_row": 68, "rsl_stock_row": 69,
-         "yahoo_sales_forecast_row": 62, "yahoo_sales_row": 63, "stock_crew_forecast_row": 70, "stock_crew_stock_row": 71},
+        {"code": "ts-01mw", "asin": "B0D3PC4MY9", "asin_row": 1, "code_row": 3, "sales_forecast_row": 13, "sales_row": 15, "forecast_row": 22, "stock_row": 24, "change_qty_row": 42, "from_row": 43, "to_row": 44, "rakuten_sales_forecast_row": 16, "rakuten_sales_row": 17, "rsl_forecast_row": 25, "rsl_stock_row": 26, "yahoo_sales_forecast_row": 18, "yahoo_sales_row": 19},
+        {"code": "ts-02", "asin": "B0GN64ZDZR", "asin_row": 57, "code_row": 58, "sales_forecast_row": 68, "sales_row": 70, "forecast_row": 77, "stock_row": 79, "change_qty_row": 99, "from_row": 100, "to_row": 101, "rakuten_sales_forecast_row": 71, "rakuten_sales_row": 72, "rsl_forecast_row": 80, "rsl_stock_row": 81, "yahoo_sales_forecast_row": 73, "yahoo_sales_row": 74, "stock_crew_forecast_row": 82, "stock_crew_stock_row": 83},
     ],
-    # ============================================================
-    # PG-01
-    # ============================================================
+    # 2026-07-25: ハイブリッド移行済み (oshima_hybrid_migration.py)
     "PG-01": [
-        {"code": "pg-01s", "asin": "B0GXDTV4SN",
-         "asin_row": 1, "code_row": 3,
-         "sales_forecast_row": 9, "sales_row": 10,
-         "forecast_row": 17, "stock_row": 18,
-         "change_qty_row": 38, "from_row": 39, "to_row": 40,
-         "rakuten_sales_forecast_row": 11, "rakuten_sales_row": 12, "rsl_forecast_row": 19, "rsl_stock_row": 20,
-         "yahoo_sales_forecast_row": 13, "yahoo_sales_row": 14, "stock_crew_forecast_row": 21, "stock_crew_stock_row": 22},
-        {"code": "pg-01ml", "asin": "B0GXDMXSZ4",
-         "asin_row": 55, "code_row": 56,
-         "sales_forecast_row": 62, "sales_row": 63,
-         "forecast_row": 70, "stock_row": 71,
-         "change_qty_row": 91, "from_row": 92, "to_row": 93,
-         "rakuten_sales_forecast_row": 64, "rakuten_sales_row": 65, "rsl_forecast_row": 72, "rsl_stock_row": 73,
-         "yahoo_sales_forecast_row": 66, "yahoo_sales_row": 67, "stock_crew_forecast_row": 74, "stock_crew_stock_row": 75},
-        {"code": "pg-01xl", "asin": "B0GXDPF1VK",
-         "asin_row": 108, "code_row": 109,
-         "sales_forecast_row": 115, "sales_row": 116,
-         "forecast_row": 123, "stock_row": 124,
-         "change_qty_row": 144, "from_row": 145, "to_row": 146,
-         "rakuten_sales_forecast_row": 117, "rakuten_sales_row": 118, "rsl_forecast_row": 125, "rsl_stock_row": 126,
-         "yahoo_sales_forecast_row": 119, "yahoo_sales_row": 120, "stock_crew_forecast_row": 127, "stock_crew_stock_row": 128},
+        {"code": "pg-01s", "asin": "B0GXDTV4SN", "asin_row": 1, "code_row": 3, "sales_forecast_row": 13, "sales_row": 15, "forecast_row": 22, "stock_row": 24, "change_qty_row": 44, "from_row": 45, "to_row": 46, "rakuten_sales_forecast_row": 16, "rakuten_sales_row": 17, "rsl_forecast_row": 25, "rsl_stock_row": 26, "yahoo_sales_forecast_row": 18, "yahoo_sales_row": 19, "stock_crew_forecast_row": 27, "stock_crew_stock_row": 28},
+        {"code": "pg-01ml", "asin": "B0GXDMXSZ4", "asin_row": 61, "code_row": 62, "sales_forecast_row": 72, "sales_row": 74, "forecast_row": 81, "stock_row": 83, "change_qty_row": 103, "from_row": 104, "to_row": 105, "rakuten_sales_forecast_row": 75, "rakuten_sales_row": 76, "rsl_forecast_row": 84, "rsl_stock_row": 85, "yahoo_sales_forecast_row": 77, "yahoo_sales_row": 78, "stock_crew_forecast_row": 86, "stock_crew_stock_row": 87},
+        {"code": "pg-01xl", "asin": "B0GXDPF1VK", "asin_row": 120, "code_row": 121, "sales_forecast_row": 131, "sales_row": 133, "forecast_row": 140, "stock_row": 142, "change_qty_row": 162, "from_row": 163, "to_row": 164, "rakuten_sales_forecast_row": 134, "rakuten_sales_row": 135, "rsl_forecast_row": 143, "rsl_stock_row": 144, "yahoo_sales_forecast_row": 136, "yahoo_sales_row": 137, "stock_crew_forecast_row": 145, "stock_crew_stock_row": 146},
     ],
 }
 

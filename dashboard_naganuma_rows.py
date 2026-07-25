@@ -98,8 +98,8 @@ def main():
         product_rows.append((i, v))
 
     # ===== 2) 商品タブ側の行番号を解決 =====
-    # タブごとの利用ブロックカーソル (順序フォールバック用)
-    cursor = {}
+    SKIP_CODES = {"MP-01-MHP"}   # ブロック定義のない簡略レイアウト商品
+    used = {}       # タブ名 → 使用済みブロックcodeの集合
     tab_labels = {}  # タブ名 → col_a (ラベル検証用)
 
     def tab_for(code: str):
@@ -113,20 +113,22 @@ def main():
         if not tab:
             return None, None
         blocks = oshima_tab_blocks_config.get_blocks(tab)
+        u = used.setdefault(tab, set())
         n = norm(code)
-        for b in blocks:
-            if norm(b["code"]) == n:
-                return tab, b
-        # 部分一致
-        for b in blocks:
-            if n in norm(b["code"]) or norm(b["code"]) in n:
-                return tab, b
-        # 順序フォールバック
-        idx = cursor.get(tab, 0)
-        if idx < len(blocks):
-            cursor[tab] = idx + 1
-            return tab, blocks[idx]
-        return tab, None
+        avail = [b for b in blocks if b["code"] not in u]
+        # 完全一致 → 部分一致(最長のブロックcode優先) → 未使用先頭
+        cand = [b for b in avail if norm(b["code"]) == n]
+        if not cand:
+            cand = sorted(
+                [b for b in avail
+                 if n in norm(b["code"]) or norm(b["code"]) in n],
+                key=lambda b: -len(norm(b["code"])))
+        if not cand and avail:
+            cand = [avail[0]]
+        if not cand:
+            return tab, None
+        u.add(cand[0]["code"])
+        return tab, cand[0]
 
     def tab_col_a(tab):
         if tab not in tab_labels:
@@ -139,6 +141,9 @@ def main():
     for row, code in product_rows:
         if norm(code) in naganuma_done:
             skipped.append((code, "長沼行あり"))
+            continue
+        if code in SKIP_CODES:
+            skipped.append((code, "ブロック定義なし(簡略レイアウト)"))
             continue
         tab, blk = block_for(code)
         if not blk:
