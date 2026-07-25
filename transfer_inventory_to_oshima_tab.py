@@ -3,6 +3,7 @@
 大島コピーの各タブへ在庫実績を転記する。
   - FBA在庫実績 (stock_row):   日次Amazon在庫推移 (ASINごとに全アカウント合算)
   - RSL在庫実績 (rsl_stock_row): 日次楽天在庫推移 (正規化SKUで max 集約)
+  - Stock Crew在庫実績 (stock_crew_stock_row): 日次Yahoo在庫推移 (正規化SKUで max 集約)
 
 値が 0 の日（取得失敗の可能性）は書き込まずスキップする。
 
@@ -119,6 +120,11 @@ def main():
     except Exception as e:
         print(f"楽天在庫読み込みスキップ: {e}", file=sys.stderr)
         rsl = {}
+    try:
+        sc = load_source(src, "日次Yahoo在庫推移", dates, normalize_sku, "max")
+    except Exception as e:
+        print(f"Yahoo在庫読み込みスキップ: {e}", file=sys.stderr)
+        sc = {}
 
     dest = retry(gc.open_by_key, DEST_SPREADSHEET_ID)
     ws = retry(dest.worksheet, args.tab)
@@ -148,6 +154,13 @@ def main():
                 updates.append({"range": f"{col_letter(c)}{blk['rsl_stock_row']}",
                                 "values": [[q2]]})
                 log.append(f"  {blk['code']} RSL {d}: {q2}")
+            # Stock Crew = Yahoo在庫 (正規化コード)
+            q3 = sc.get((normalize_sku(blk["code"]), d), 0)
+            if q3 > 0 and "stock_crew_stock_row" in blk:
+                updates.append({
+                    "range": f"{col_letter(c)}{blk['stock_crew_stock_row']}",
+                    "values": [[q3]]})
+                log.append(f"  {blk['code']} SC {d}: {q3}")
 
     print(f"=== [大島コピー / {args.tab}] 在庫実績転記 ({dates[0]}〜{dates[-1]}) ===",
           file=sys.stderr)
