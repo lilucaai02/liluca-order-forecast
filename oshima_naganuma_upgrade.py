@@ -248,7 +248,7 @@ def main():
     for d in nb:
         label_data += [
             {"range": f"A{d['_nag']}", "values": [["アマゾンイベント長沼"]]},
-            {"range": f"A{d['_avg7']}", "values": [["直近7平日セール以外平均"]]},
+            {"range": f"A{d['_avg7']}", "values": [["直近セール以外加重平均"]]},
             {"range": f"A{d['_avg30']}", "values": [["過去30日セール以外平均"]]},
             {"range": f"A{d['_coef']}", "values": [["アマゾンイベント係数長沼"]]},
             {"range": f"A{d['_f7']}", "values": [["アマゾン長沼予想７日"]]},
@@ -590,14 +590,20 @@ def main():
         CHG, FR, TO = d["change_qty_row"], d["from_row"], d["to_row"]
 
         def wd7(ref):
+            # 直近10日(セール以外・全曜日)の指数加重平均 (α=0.35)。
+            # バックテスト(2026-07-25, マウスピース7商品×2476日)で
+            # 直近7平日平均(誤差5.76)より加重10日(5.26)が最良だったため採用。
             conds = (f'$C$1:$1<{ref}, '
                      f'$C${E}:${E}="", $C${N}:${N}="", '
-                     f'ARRAYFORMULA(WEEKDAY($C$1:$1,2))<6, '
                      f'$C${S}:${S}<>""')
-            return (f'ROUND(AVERAGE(ARRAY_CONSTRAIN(SORT('
+            weights = ("{0.35;0.2275;0.147875;0.09611875;0.0624771875;"
+                       "0.040610171875;0.02639661171875;0.0171577976171875;"
+                       "0.0111525684511719;0.0072491694932617}")
+            vals = (f'ARRAY_CONSTRAIN(SORT('
                     f'TRANSPOSE(FILTER($C${S}:${S}, {conds})), '
                     f'TRANSPOSE(FILTER($C$1:$1, {conds})), '
-                    f'FALSE), 7, 1)), 1)')
+                    f'FALSE), 10, 1)')
+            return (f'ROUND(SUMPRODUCT({vals}, {weights})/0.9865372085, 1)')
 
         def avg_e(ref, days):
             return (f'AVERAGEIFS($C${S}:${S}, '
