@@ -9,15 +9,15 @@ from __future__ import annotations
 
 OSHIMA_TAB_BLOCKS: dict[str, list[dict]] = {
 
-    # 2026-07-25: 長沼行8行/ブロック挿入済み (oshima_naganuma_upgrade.py)
+    # 2026-07-25: ハイブリッド移行済み (oshima_hybrid_migration.py)
     "マウスピース(在庫)": [
-        {"code": "MP-02MHD", "asin": "B0B79Q5N3F", "asin_row": 1, "code_row": 3, "sales_forecast_row": 13, "sales_row": 16, "forecast_row": 23, "stock_row": 26, "change_qty_row": 46, "from_row": 47, "to_row": 48, "rakuten_sales_forecast_row": 17, "rakuten_sales_row": 18, "rsl_forecast_row": 27, "rsl_stock_row": 28, "yahoo_sales_forecast_row": 19, "yahoo_sales_row": 20, "stock_crew_forecast_row": 29, "stock_crew_stock_row": 30},
-        {"code": "MP-02MHD6", "asin": "B0BW6XYGWR", "asin_row": 62, "code_row": 63, "sales_forecast_row": 73, "sales_row": 76, "forecast_row": 83, "stock_row": 86, "change_qty_row": 106, "from_row": 107, "to_row": 108, "rakuten_sales_forecast_row": 77, "rakuten_sales_row": 78, "rsl_forecast_row": 87, "rsl_stock_row": 88, "yahoo_sales_forecast_row": 79, "yahoo_sales_row": 80},
-        {"code": "MP-03", "asin": "B0DZBPBQHZ", "asin_row": 121, "code_row": 122, "sales_forecast_row": 132, "sales_row": 135, "forecast_row": 142, "stock_row": 145, "change_qty_row": 165, "from_row": 166, "to_row": 167, "rakuten_sales_forecast_row": 136, "rakuten_sales_row": 137, "rsl_forecast_row": 146, "rsl_stock_row": 147, "yahoo_sales_forecast_row": 138, "yahoo_sales_row": 139, "stock_crew_forecast_row": 148, "stock_crew_stock_row": 149},
-        {"code": "MP-01", "asin": "B09SFLS72Z", "asin_row": 181, "code_row": 182, "sales_forecast_row": 192, "sales_row": 195, "forecast_row": 202, "stock_row": 205, "change_qty_row": 225, "from_row": 226, "to_row": 227, "rakuten_sales_forecast_row": 196, "rakuten_sales_row": 197, "rsl_forecast_row": 206, "rsl_stock_row": 207, "yahoo_sales_forecast_row": 198, "yahoo_sales_row": 199, "stock_crew_forecast_row": 208, "stock_crew_stock_row": 209},
-        {"code": "MP-02", "asin": "B09SFLZV6H", "asin_row": 241, "code_row": 242, "sales_forecast_row": 252, "sales_row": 255, "forecast_row": 262, "stock_row": 265, "change_qty_row": 285, "from_row": 286, "to_row": 287, "rakuten_sales_forecast_row": 256, "rakuten_sales_row": 257, "rsl_forecast_row": 266, "rsl_stock_row": 267, "yahoo_sales_forecast_row": 258, "yahoo_sales_row": 259, "stock_crew_forecast_row": 268, "stock_crew_stock_row": 269},
-        {"code": "MP-02MHD-small", "asin": "B0D357JBLN", "asin_row": 301, "code_row": 302, "sales_forecast_row": 312, "sales_row": 315, "forecast_row": 322, "stock_row": 325, "change_qty_row": 345, "from_row": 346, "to_row": 347, "rakuten_sales_forecast_row": 316, "rakuten_sales_row": 317, "rsl_forecast_row": 326, "rsl_stock_row": 327, "yahoo_sales_forecast_row": 318, "yahoo_sales_row": 319, "stock_crew_forecast_row": 328, "stock_crew_stock_row": 329},
-        {"code": "MP-04", "asin": "B0GFDT327F", "asin_row": 362, "code_row": 363, "sales_forecast_row": 373, "sales_row": 376, "forecast_row": 383, "stock_row": 386, "change_qty_row": 406, "from_row": 407, "to_row": 408, "rakuten_sales_forecast_row": 377, "rakuten_sales_row": 378, "rsl_forecast_row": 387, "rsl_stock_row": 388, "yahoo_sales_forecast_row": 379, "yahoo_sales_row": 380, "stock_crew_forecast_row": 389, "stock_crew_stock_row": 390},
+        {"code": "MP-02MHD", "asin": "B0B79Q5N3F", "asin_row": 1, "code_row": 3, "sales_forecast_row": 13, "sales_row": 15, "forecast_row": 22, "stock_row": 24, "change_qty_row": 44, "from_row": 45, "to_row": 46, "rakuten_sales_forecast_row": 16, "rakuten_sales_row": 17, "rsl_forecast_row": 25, "rsl_stock_row": 26, "yahoo_sales_forecast_row": 18, "yahoo_sales_row": 19, "stock_crew_forecast_row": 27, "stock_crew_stock_row": 28},
+        {"code": "MP-02MHD6", "asin": "B0BW6XYGWR", "asin_row": 60, "code_row": 61, "sales_forecast_row": 71, "sales_row": 73, "forecast_row": 80, "stock_row": 82, "change_qty_row": 102, "from_row": 103, "to_row": 104, "rakuten_sales_forecast_row": 74, "rakuten_sales_row": 75, "rsl_forecast_row": 83, "rsl_stock_row": 84, "yahoo_sales_forecast_row": 76, "yahoo_sales_row": 77},
+        {"code": "MP-03", "asin": "B0DZBPBQHZ", "asin_row": 117, "code_row": 118, "sales_forecast_row": 128, "sales_row": 130, "forecast_row": 137, "stock_row": 139, "change_qty_row": 159, "from_row": 160, "to_row": 161, "rakuten_sales_forecast_row": 131, "rakuten_sales_row": 132, "rsl_forecast_row": 140, "rsl_stock_row": 141, "yahoo_sales_forecast_row": 133, "yahoo_sales_row": 134, "stock_crew_forecast_row": 142, "stock_crew_stock_row": 143},
+        {"code": "MP-01", "asin": "B09SFLS72Z", "asin_row": 175, "code_row": 176, "sales_forecast_row": 186, "sales_row": 188, "forecast_row": 195, "stock_row": 197, "change_qty_row": 217, "from_row": 218, "to_row": 219, "rakuten_sales_forecast_row": 189, "rakuten_sales_row": 190, "rsl_forecast_row": 198, "rsl_stock_row": 199, "yahoo_sales_forecast_row": 191, "yahoo_sales_row": 192, "stock_crew_forecast_row": 200, "stock_crew_stock_row": 201},
+        {"code": "MP-02", "asin": "B09SFLZV6H", "asin_row": 233, "code_row": 234, "sales_forecast_row": 244, "sales_row": 246, "forecast_row": 253, "stock_row": 255, "change_qty_row": 275, "from_row": 276, "to_row": 277, "rakuten_sales_forecast_row": 247, "rakuten_sales_row": 248, "rsl_forecast_row": 256, "rsl_stock_row": 257, "yahoo_sales_forecast_row": 249, "yahoo_sales_row": 250, "stock_crew_forecast_row": 258, "stock_crew_stock_row": 259},
+        {"code": "MP-02MHD-small", "asin": "B0D357JBLN", "asin_row": 291, "code_row": 292, "sales_forecast_row": 302, "sales_row": 304, "forecast_row": 311, "stock_row": 313, "change_qty_row": 333, "from_row": 334, "to_row": 335, "rakuten_sales_forecast_row": 305, "rakuten_sales_row": 306, "rsl_forecast_row": 314, "rsl_stock_row": 315, "yahoo_sales_forecast_row": 307, "yahoo_sales_row": 308, "stock_crew_forecast_row": 316, "stock_crew_stock_row": 317},
+        {"code": "MP-04", "asin": "B0GFDT327F", "asin_row": 350, "code_row": 351, "sales_forecast_row": 361, "sales_row": 363, "forecast_row": 370, "stock_row": 372, "change_qty_row": 392, "from_row": 393, "to_row": 394, "rakuten_sales_forecast_row": 364, "rakuten_sales_row": 365, "rsl_forecast_row": 373, "rsl_stock_row": 374, "yahoo_sales_forecast_row": 366, "yahoo_sales_row": 367, "stock_crew_forecast_row": 375, "stock_crew_stock_row": 376},
     ],
     # ============================================================
     # DS-01 (在庫) 
@@ -28,14 +28,15 @@ OSHIMA_TAB_BLOCKS: dict[str, list[dict]] = {
     #   R11 アマゾンイベント係数長沼 (+1)
     #   R14,R15 アマゾン長沼予想７日/３０日 (+2)
     #   R24,R25 在庫予想長沼７日/３０日 (+2)  → 元の構造から計 +8
+    # 2026-07-25: ハイブリッド移行 (30日系・長沼7日行を削除、R14=ハイブリッド)
     "DS-01 (在庫) ": [
         {"code": "DS-01", "asin": "B0BSRPRN3S",
          "asin_row": 1, "code_row": 3,
-         "sales_forecast_row": 13, "sales_row": 16,
-         "forecast_row": 23, "stock_row": 26,
-         "change_qty_row": 47, "from_row": 48, "to_row": 49,
-         "rakuten_sales_forecast_row": 17, "rakuten_sales_row": 18, "rsl_forecast_row": 27, "rsl_stock_row": 28,
-         "yahoo_sales_forecast_row": 19, "yahoo_sales_row": 20, "stock_crew_forecast_row": 29, "stock_crew_stock_row": 30},
+         "sales_forecast_row": 13, "sales_row": 15,
+         "forecast_row": 22, "stock_row": 24,
+         "change_qty_row": 45, "from_row": 46, "to_row": 47,
+         "rakuten_sales_forecast_row": 16, "rakuten_sales_row": 17, "rsl_forecast_row": 25, "rsl_stock_row": 26,
+         "yahoo_sales_forecast_row": 18, "yahoo_sales_row": 19, "stock_crew_forecast_row": 27, "stock_crew_stock_row": 28},
     ],
     # ============================================================
     # GC-01(在庫)
