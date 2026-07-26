@@ -199,8 +199,10 @@ def main():
                         f"{col_letter(c_lo)}{ev}:{col_letter(c_hi)}{ev}")
             cur_row = (cur[0] + [""] * len(days))[:len(days)] if cur else \
                 [""] * len(days)
+            # 仮置き (タイムセール仮) は実予定で上書きしてよい
             occupied = [str(x).strip() for x in cur_row if str(x).strip()
-                        and str(x).strip() != e["name"]]
+                        and str(x).strip() != e["name"]
+                        and "仮" not in str(x)]
             if occupied:
                 results[e["row"]] = (f"スキップ: 既にイベントあり "
                                      f"({occupied[0][:12]}...)")
