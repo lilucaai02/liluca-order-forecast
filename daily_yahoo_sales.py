@@ -81,6 +81,7 @@ def fetch_yahoo_sales(
     キャンセル(OrderStatus=4) は除外。
     """
     result: Dict[Tuple[str, str, str], int] = {}
+    ok_accounts = 0
     from_dt = datetime.datetime.strptime(from_date, "%Y-%m-%d").date()
     to_dt = datetime.datetime.strptime(to_date, "%Y-%m-%d").date()
     from_s = _fmt_dt(from_dt, is_end=False)
@@ -100,6 +101,7 @@ def fetch_yahoo_sales(
             # 期間内の注文番号一覧（キャンセル除く: OrderStatus 1,2,3,5）
             order_ids = client.search_orders(from_s, to_s, order_status=[1, 2, 3, 5])
             print(f"[Yahoo:{acc.name}] 対象注文 {len(order_ids)}件", file=sys.stderr)
+            ok_accounts += 1
         except Exception as e:
             print(f"[Yahoo:{acc.name}] 注文検索失敗: {e}", file=sys.stderr)
             continue
@@ -125,6 +127,11 @@ def fetch_yahoo_sales(
             if i % 20 == 0:
                 print(f"  [Yahoo:{acc.name}] 詳細取得 {i}/{len(order_ids)}", file=sys.stderr)
             time.sleep(YAHOO_QPS_SLEEP)
+
+    if ok_accounts == 0:
+        # 全アカウント取得失敗 (注文API未承認の403など)。
+        # 0埋めすると「売上0」と区別が付かなくなるため書き込みを中止する
+        raise RuntimeError("全Yahooアカウントで注文取得に失敗 (0埋めを防ぐため中止)")
 
     return result
 
