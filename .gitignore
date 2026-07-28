@@ -19,3 +19,6 @@ get_refresh_token.py
 service-account.json
 ngrok
 *.log
+
+# ローカルバックアップ (注文データ等を含むためコミットしない)
+backups/
