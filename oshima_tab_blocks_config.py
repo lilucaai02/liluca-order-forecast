@@ -19,9 +19,9 @@ OSHIMA_TAB_BLOCKS: dict[str, list[dict]] = {
         {"code": "MP-02MHD-small", "asin": "B0D357JBLN", "asin_row": 355, "code_row": 356, "sales_forecast_row": 366, "sales_row": 368, "forecast_row": 385, "stock_row": 387, "change_qty_row": 410, "from_row": 411, "to_row": 412, "rakuten_sales_forecast_row": 373, "rakuten_sales_row": 375, "rsl_forecast_row": 388, "rsl_stock_row": 390, "yahoo_sales_forecast_row": 381, "yahoo_sales_row": 382, "stock_crew_forecast_row": 391, "stock_crew_stock_row": 393, "sc_naganuma_row": 392, "total_naganuma_row": 408},
         {"code": "MP-04", "asin": "B0GFDT327F", "asin_row": 427, "code_row": 428, "sales_forecast_row": 438, "sales_row": 440, "forecast_row": 457, "stock_row": 459, "change_qty_row": 482, "from_row": 483, "to_row": 484, "rakuten_sales_forecast_row": 445, "rakuten_sales_row": 447, "rsl_forecast_row": 460, "rsl_stock_row": 462, "yahoo_sales_forecast_row": 453, "yahoo_sales_row": 454, "stock_crew_forecast_row": 463, "stock_crew_stock_row": 465, "sc_naganuma_row": 464, "total_naganuma_row": 480},
     ],
-    # 2026-07-25: SC在庫予想長沼/在庫総数予想長沼 挿入済み
+    # 2026-07-28: 元予想行(5,6,10,13,21,28)削除・行4=販売価格に再構成
     "DS-01 (在庫) ": [
-        {"code": "DS-01", "asin": "B0BSRPRN3S", "asin_row": 1, "code_row": 3, "sales_forecast_row": 13, "sales_row": 15, "forecast_row": 32, "stock_row": 34, "change_qty_row": 58, "from_row": 59, "to_row": 60, "rakuten_sales_forecast_row": 21, "rakuten_sales_row": 22, "rsl_forecast_row": 35, "rsl_stock_row": 37, "yahoo_sales_forecast_row": 28, "yahoo_sales_row": 29, "stock_crew_forecast_row": 38, "stock_crew_stock_row": 40, "sc_naganuma_row": 39, "total_naganuma_row": 56},
+        {"code": "DS-01", "asin": "B0BSRPRN3S", "asin_row": 1, "code_row": 3, "sales_row": 11, "forecast_row": 26, "stock_row": 28, "rakuten_sales_row": 17, "rsl_forecast_row": 29, "rsl_stock_row": 31, "yahoo_sales_row": 23, "stock_crew_forecast_row": 32, "stock_crew_stock_row": 34, "change_qty_row": 52, "from_row": 53, "to_row": 54, "sc_naganuma_row": 33, "total_naganuma_row": 50},
     ],
     # 2026-07-25: SC在庫予想長沼/在庫総数予想長沼 挿入済み
     "GC-01(在庫)": [
