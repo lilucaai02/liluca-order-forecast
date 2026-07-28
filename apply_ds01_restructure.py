@@ -55,7 +55,7 @@ def retry(fn, *a, **k):
         try:
             return fn(*a, **k)
         except APIError as e:
-            if any(x in str(e) for x in ("429", "500", "503", "409")) and i < 9:
+            if any(x in str(e) for x in ("429", "500", "503", "409", "404")) and i < 9:
                 time.sleep(delay)
                 delay = min(delay * 2, 180)
             else:
