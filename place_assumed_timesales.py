@@ -86,9 +86,9 @@ def process_tab(sp, tab, records):
         ev = cf = None
         for r in range(lo, hi):
             v = col_a[r - 1].strip() if r - 1 < len(col_a) else ""
-            if v == "アマゾンイベント長沼" and ev is None:
+            if v == "アマゾンイベント" and ev is None:
                 ev = r
-            elif v == "アマゾンイベント係数長沼" and cf is None:
+            elif v == "アマゾンイベント係数" and cf is None:
                 cf = r
         if not ev or not cf:
             continue
