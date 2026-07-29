@@ -8,6 +8,10 @@
 使い方:
   python3 transfer_yahoo_inventory_to_tab.py --tab "DS-01 (在庫) "
   python3 transfer_yahoo_inventory_to_tab.py --tab "マウスピース(在庫)" --date 2026-07-22
+
+【安全装置】元シートのセルが空白/未定義/数値変換不可の場合は「不明」として扱い、
+該当(商品コード)への書き込みをスキップして転記先の既存値を保持する
+（文字列/数値の "0" は取得成功した正常な0として区別する）。
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ import datetime
 import os
 import re
 import sys
-from typing import Dict
+from typing import Dict, Set, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -47,8 +51,26 @@ def col_letter(n: int) -> str:
     return s
 
 
-def read_source_inventory(gc, src_spreadsheet_id: str, date_str: str) -> Dict[str, int]:
-    """{正規化SKU: 合算qty}"""
+UNKNOWN = object()  # 取得失敗(空白/未定義/数値変換不可)を示すセンチネル。0とは区別する。
+
+
+def _parse_qty(raw):
+    """セルの生値をintに変換する。空文字列/None/数値変換不可はUNKNOWN(不明)を返す。
+    文字列の"0"や数値0は取得成功した正常な0として扱う。"""
+    if raw is None:
+        return UNKNOWN
+    if isinstance(raw, str) and raw.strip() == "":
+        return UNKNOWN
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return UNKNOWN
+
+
+def read_source_inventory(gc, src_spreadsheet_id: str, date_str: str
+                           ) -> Tuple[Dict[str, int], Set[str]]:
+    """(既知の{正規化SKU: 合算qty}, 不明な正規化SKUの集合) を返す。
+    寄与する行のうち1つでも不明があれば、その正規化SKU全体を不明として扱う。"""
     sp = gc.open_by_key(src_spreadsheet_id)
     ws = sp.worksheet(SRC_SHEET_NAME)
 
@@ -67,26 +89,28 @@ def read_source_inventory(gc, src_spreadsheet_id: str, date_str: str) -> Dict[st
     rows = ws.get(f"A2:{target_col_letter}{n}")
 
     aggregated: Dict[str, int] = {}
+    unknown: Set[str] = set()
     for row in rows:
         if len(row) < 1:
             continue
         sku = row[0]
         if not sku:
             continue
-        if len(row) >= target_col_idx:
-            try:
-                qty = int(row[target_col_idx - 1] or 0)
-            except (ValueError, TypeError):
-                qty = 0
-        else:
-            qty = 0
+        raw = row[target_col_idx - 1] if len(row) >= target_col_idx else None
+        qty = _parse_qty(raw)
         key = normalize_sku(sku)
+        if qty is UNKNOWN:
+            unknown.add(key)
+            aggregated.pop(key, None)
+            continue
+        if key in unknown:
+            continue
         # 合算時: -1(無制限) と正数が混じった場合は max（正数）を優先
         if key in aggregated:
             aggregated[key] = max(aggregated[key], qty)
         else:
             aggregated[key] = qty
-    return aggregated
+    return aggregated, unknown
 
 
 def find_date_column_in_dest(ws, date_str: str) -> int:
@@ -134,16 +158,27 @@ def main():
 
     print(f"=== [{args.tab}] Stock Crew在庫実績 転記 [{args.date}] ===", file=sys.stderr)
 
-    by_norm = read_source_inventory(gc, settings.google_spreadsheet_id, args.date)
-    print(f"元シート: {len(by_norm)}個の正規化SKU", file=sys.stderr)
+    by_norm, by_norm_unknown = read_source_inventory(gc, settings.google_spreadsheet_id, args.date)
+    print(f"元シート: {len(by_norm)}個の正規化SKU（不明 {len(by_norm_unknown)}個）",
+          file=sys.stderr)
 
     print(f"\n=== 商品コードごとの集計 ===", file=sys.stderr)
     block_totals: Dict[str, int] = {}
+    unknown_codes = []
     for blk in blocks_with_stock_crew:
         norm_code = normalize_sku(blk["code"])
+        if norm_code in by_norm_unknown:
+            unknown_codes.append(blk["code"])
+            print(f"  {blk['code']}: 不明(取得失敗の可能性)", file=sys.stderr)
+            continue
         total = by_norm.get(norm_code, 0)
         block_totals[blk["code"]] = total
         print(f"  {blk['code']}: {total}", file=sys.stderr)
+
+    if unknown_codes and len(unknown_codes) == len(blocks_with_stock_crew):
+        print(f"\nエラー: 全セル({len(blocks_with_stock_crew)}件)が元シート未取得(不明)のため転記できません",
+              file=sys.stderr)
+        sys.exit(1)
 
     if args.dry_run:
         print("\n[dry-run] 書き込みスキップ", file=sys.stderr)
@@ -157,8 +192,15 @@ def main():
 
     updates = []
     for blk in blocks_with_stock_crew:
+        if blk["code"] in unknown_codes:
+            print(f"※ 元シートが空白(取得失敗の可能性)のため転記をスキップ: "
+                  f"{blk['code']} / {args.date}", file=sys.stderr)
+            continue
         cell = f"{date_col}{blk['stock_crew_stock_row']}"
         updates.append({"range": cell, "values": [[block_totals[blk["code"]]]]})
+
+    if unknown_codes:
+        print(f"※ 転記スキップ 合計 {len(unknown_codes)} セル（元シート未取得）", file=sys.stderr)
 
     dest_ws.batch_update(updates, value_input_option='USER_ENTERED')
     print(f"\n→ {len(updates)} セル書き込み完了", file=sys.stderr)

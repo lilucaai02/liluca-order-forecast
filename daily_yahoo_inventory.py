@@ -11,6 +11,16 @@ Yahoo!ショッピング ストア管理API getStock → 「日次Yahoo在庫推
   - 1行目: A1="SKU", B1="アカウント", C1以降=日付
   - C列以降: 各日付の在庫数（空欄=無制限は -1）
 
+動作 (2026-07-29 修正):
+  - 在庫取得に失敗したアカウントのSKUは 0 で埋めず、既存値を保持する
+    (取得失敗を「在庫0」として記録すると在庫推移が壊れるため)
+  - 全アカウント失敗なら書き込まず異常終了
+
+終了コード:
+  0 = 全アカウント取得成功
+  1 = 全アカウント取得失敗 (書き込み中止)
+  2 = 一部アカウントが取得失敗 (成功分のみ書き込み済み)
+
 使い方:
   python3 daily_yahoo_inventory.py                  # 今日
   python3 daily_yahoo_inventory.py --date 2026-07-22
@@ -22,24 +32,30 @@ import argparse
 import datetime
 import os
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict, List, Set, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config.settings import Settings
+from src.fetch_safety import retry_call, set_default_socket_timeout, sheets_retry
 from src.yahoo_client import YahooClient
 
 SHEET_NAME = "日次Yahoo在庫推移"
 InvKey = Tuple[str, str]  # (sku, account_name)
 
 
-def fetch_yahoo_stock(settings: Settings) -> Dict[InvKey, int]:
-    """全Yahooアカウントの (sku, account_name) → 在庫数 を取得."""
+def fetch_yahoo_stock(settings: Settings) -> Tuple[Dict[InvKey, int], Set[str]]:
+    """全Yahooアカウントの (sku, account_name) → 在庫数 を取得.
+
+    返り値: (在庫マップ, 取得に失敗したアカウント名の集合)
+    """
     result: Dict[InvKey, int] = {}
+    failed_accounts: Set[str] = set()
     for acc in settings.get_yahoo_accounts():
         if not acc.refresh_token or not acc.client_secret:
             print(f"[Yahoo:{acc.name}] refresh_token / client_secret 未設定 → スキップ",
                   file=sys.stderr)
+            failed_accounts.add(acc.name)
             continue
         try:
             client = YahooClient(
@@ -50,7 +66,8 @@ def fetch_yahoo_stock(settings: Settings) -> Dict[InvKey, int]:
                 refresh_token=acc.refresh_token,
             )
             # 全SKU一覧を itemSearch (V3公開API) で取得
-            items = client.get_store_items()
+            items = retry_call(lambda: client.get_store_items(),
+                               f"[Yahoo:{acc.name}] itemSearch")
             item_codes: list[str] = []
             for item in items:
                 sku = client.extract_sku(item)
@@ -59,14 +76,17 @@ def fetch_yahoo_stock(settings: Settings) -> Dict[InvKey, int]:
             print(f"[Yahoo:{acc.name}] itemSearch: {len(item_codes)} SKU", file=sys.stderr)
 
             # getStock で実在庫数を取得
-            stock_map = client.get_store_stock(item_codes)
+            stock_map = retry_call(lambda: client.get_store_stock(item_codes),
+                                   f"[Yahoo:{acc.name}] getStock")
             for sku, qty in stock_map.items():
                 result[(sku, acc.name)] = max(qty, 0) if qty >= 0 else -1
             print(f"[Yahoo:{acc.name}] getStock: {len(stock_map)} 件取得", file=sys.stderr)
         except Exception as e:
-            print(f"[Yahoo:{acc.name}] エラー: {e}", file=sys.stderr)
+            print(f"[Yahoo:{acc.name}] 在庫取得エラー(このアカウントは0埋めせず"
+                  f"既存値を保持): {e}", file=sys.stderr)
+            failed_accounts.add(acc.name)
             continue
-    return result
+    return result, failed_accounts
 
 
 def col_letter(n: int) -> str:
@@ -80,7 +100,7 @@ def col_letter(n: int) -> str:
 def ensure_sheet(spreadsheet, row_count: int):
     import gspread
     try:
-        ws = spreadsheet.worksheet(SHEET_NAME)
+        ws = sheets_retry(spreadsheet.worksheet, SHEET_NAME)
     except gspread.WorksheetNotFound:
         rows = max(1 + row_count, 500)
         ws = spreadsheet.add_worksheet(title=SHEET_NAME, rows=rows, cols=400)
@@ -91,8 +111,8 @@ def ensure_sheet(spreadsheet, row_count: int):
 
 
 def read_existing_keys(ws) -> List[InvKey]:
-    col_a = ws.col_values(1)
-    col_b = ws.col_values(2)
+    col_a = sheets_retry(ws.col_values, 1)
+    col_b = sheets_retry(ws.col_values, 2)
     keys: List[InvKey] = []
     n = max(len(col_a), len(col_b))
     for i in range(1, n):
@@ -110,13 +130,13 @@ def append_new_key_rows(ws, new_keys: List[InvKey], existing_count: int):
     block = [[a, b] for (a, b) in new_keys]
     end_row = start_row + len(block) - 1
     if end_row > ws.row_count:
-        ws.add_rows(end_row - ws.row_count + 100)
-    ws.update(range_name=f"A{start_row}:B{end_row}", values=block)
+        sheets_retry(ws.add_rows, end_row - ws.row_count + 100)
+    sheets_retry(ws.update, range_name=f"A{start_row}:B{end_row}", values=block)
     print(f"新規(SKU,アカウント)ペア {len(new_keys)}件 を追加", file=sys.stderr)
 
 
 def find_date_column(ws, date_str: str) -> int | None:
-    row1 = ws.row_values(1)
+    row1 = sheets_retry(ws.row_values, 1)
     for idx, val in enumerate(row1, start=1):
         if idx < 3:
             continue
@@ -125,7 +145,13 @@ def find_date_column(ws, date_str: str) -> int | None:
     return None
 
 
-def write_daily_column(spreadsheet, by_key: Dict[InvKey, int], date_str: str):
+def write_daily_column(spreadsheet, by_key: Dict[InvKey, int], date_str: str,
+                       failed_accounts: Set[str] | None = None):
+    """在庫スナップショットを日付列へ書き込む。
+
+    取得に失敗したアカウントのSKUは 0 埋めせず、その日付列の既存値を保持する。
+    """
+    failed_accounts = failed_accounts or set()
     all_keys = sorted(by_key.keys())
     ws = ensure_sheet(spreadsheet, len(all_keys))
 
@@ -138,22 +164,38 @@ def write_daily_column(spreadsheet, by_key: Dict[InvKey, int], date_str: str):
 
     target_col = find_date_column(ws, date_str)
     if target_col is None:
-        row1 = ws.row_values(1)
+        row1 = sheets_retry(ws.row_values, 1)
         target_col = max(len(row1) + 1, 3)
     if target_col > ws.col_count:
-        ws.add_cols(target_col - ws.col_count + 10)
-
-    values: List[List] = [[date_str]]
-    for key in existing_keys:
-        qty = by_key.get(key, 0)
-        values.append([int(qty)])
+        sheets_retry(ws.add_cols, target_col - ws.col_count + 10)
 
     col = col_letter(target_col)
-    ws.update(range_name=f"{col}1:{col}{len(values)}", values=values)
+
+    # 取得失敗アカウントのセルを保持するため、既存の列値を先に読む
+    prev_col: List[str] = []
+    if failed_accounts and existing_keys:
+        got = sheets_retry(ws.get, f"{col}2:{col}{len(existing_keys) + 1}")
+        prev_col = [(r[0] if r else "") for r in (got or [])]
+
+    values: List[List] = [[date_str]]
+    kept = 0
+    for i, key in enumerate(existing_keys):
+        if key[1] in failed_accounts:
+            values.append([prev_col[i] if i < len(prev_col) else ""])
+            kept += 1
+            continue
+        values.append([int(by_key.get(key, 0))])
+
+    if kept:
+        print(f"※ 取得失敗アカウント({', '.join(sorted(failed_accounts))})の"
+              f"{kept}行は既存値を保持しました", file=sys.stderr)
+
+    sheets_retry(ws.update, range_name=f"{col}1:{col}{len(values)}", values=values)
     print(f"→ {date_str} を {col}列に書き込み（{len(values)}行）", file=sys.stderr)
 
 
 def main():
+    set_default_socket_timeout()
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", default=datetime.date.today().strftime("%Y-%m-%d"))
     args = parser.parse_args()
@@ -162,15 +204,25 @@ def main():
     if not settings.google_credentials_file or not settings.google_spreadsheet_id:
         print("エラー: .env を確認", file=sys.stderr)
         sys.exit(1)
-    if not settings.get_yahoo_accounts():
+    accounts = settings.get_yahoo_accounts()
+    if not accounts:
         print("エラー: Yahooアカウント未設定", file=sys.stderr)
         sys.exit(1)
 
     print(f"=== 日次Yahoo在庫推移 [{args.date}] ===", file=sys.stderr)
-    by_key = fetch_yahoo_stock(settings)
+    by_key, failed_accounts = fetch_yahoo_stock(settings)
     if not by_key:
-        print("在庫データが取れませんでした", file=sys.stderr)
+        print("エラー: 在庫データが1件も取れませんでした。"
+              "0埋めを防ぐため書き込みを中止します", file=sys.stderr)
         sys.exit(1)
+    if failed_accounts and len(failed_accounts) >= len(accounts):
+        print(f"エラー: 全 {len(accounts)} Yahooアカウントで在庫取得に失敗しました。"
+              "0埋めを防ぐため書き込みを中止します", file=sys.stderr)
+        sys.exit(1)
+    if failed_accounts:
+        print(f"警告: {len(failed_accounts)}アカウントの在庫取得に失敗 "
+              f"({', '.join(sorted(failed_accounts))}) "
+              f"→ 該当セルは既存値を保持します", file=sys.stderr)
 
     import gspread
     from google.oauth2.service_account import Credentials
@@ -183,12 +235,14 @@ def main():
         ],
     )
     gc = gspread.authorize(creds)
-    sp = gc.open_by_key(settings.google_spreadsheet_id)
+    sp = sheets_retry(gc.open_by_key, settings.google_spreadsheet_id)
 
-    write_daily_column(sp, by_key, args.date)
+    write_daily_column(sp, by_key, args.date, failed_accounts=failed_accounts)
 
     url = f"https://docs.google.com/spreadsheets/d/{settings.google_spreadsheet_id}"
     print(f"完了 → {url}")
+    if failed_accounts:
+        sys.exit(2)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,17 @@ Googleスプレッドシートに毎日記録する（ASINベース）。
   - 1行目: A1="ASIN", B1="アカウント", C1="対応SKU", D1以降=日付
   - D列以降: 各日付の在庫数 (fulfillable_quantity, ASIN×アカウント合算)
 
+動作 (2026-07-29 修正):
+  - 在庫取得に失敗したアカウントのASINは 0 で埋めず、既存値を保持する
+    (取得失敗を「在庫0」として記録すると在庫推移が壊れ、
+     販売実績の「在庫減なのに販売0」検知も効かなくなるため)
+  - 全アカウント失敗なら書き込まず異常終了
+
+終了コード:
+  0 = 全アカウント取得成功
+  1 = 全アカウント取得失敗 (書き込み中止)
+  2 = 一部アカウントが取得失敗 (成功分のみ書き込み済み)
+
 使い方:
   python3 daily_amazon_inventory_asin.py                  # 今日
   python3 daily_amazon_inventory_asin.py --date 2026-06-10
@@ -25,11 +36,17 @@ import argparse
 import datetime
 import os
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict, List, Set, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config.settings import Settings
+from src.fetch_safety import (
+    retry_call,
+    set_default_socket_timeout,
+    sheets_batch_update,
+    sheets_retry,
+)
 from src.inventory import fetch_inventory
 from src.sp_client import SPClient
 
@@ -42,15 +59,20 @@ def fetch_inventory_by_asin(settings: Settings):
     返り値:
       qty_map: {(asin, account_name): fulfillable_qty合算}
       sku_map: {(asin, account_name): [SKUリスト]}
+      failed_accounts: 取得に失敗したアカウント名の集合
     """
     qty_map: Dict[InvKey, int] = {}
     sku_map: Dict[InvKey, List[str]] = {}
+    failed_accounts: Set[str] = set()
     for acc in settings.get_accounts():
         try:
             client = SPClient(settings, account=acc)
-            items = fetch_inventory(client)
+            items = retry_call(lambda: fetch_inventory(client),
+                               f"[Amazon:{acc.name}] 在庫取得")
         except Exception as e:
-            print(f"[Amazon:{acc.name}] エラー: {e}", file=sys.stderr)
+            print(f"[Amazon:{acc.name}] 在庫取得エラー(このアカウントは0埋めせず"
+                  f"既存値を保持): {e}", file=sys.stderr)
+            failed_accounts.add(acc.name)
             continue
         for item in items:
             asin = item.asin
@@ -61,7 +83,7 @@ def fetch_inventory_by_asin(settings: Settings):
             if item.seller_sku:
                 sku_map.setdefault(key, []).append(item.seller_sku)
         print(f"[Amazon:{acc.name}] {len(items)}件取得", file=sys.stderr)
-    return qty_map, sku_map
+    return qty_map, sku_map, failed_accounts
 
 
 def col_letter(n: int) -> str:
@@ -75,7 +97,7 @@ def col_letter(n: int) -> str:
 def ensure_sheet(spreadsheet, row_count: int):
     import gspread
     try:
-        ws = spreadsheet.worksheet(SHEET_NAME)
+        ws = sheets_retry(spreadsheet.worksheet, SHEET_NAME)
     except gspread.WorksheetNotFound:
         rows = max(1 + row_count, 500)
         ws = spreadsheet.add_worksheet(title=SHEET_NAME, rows=rows, cols=400)
@@ -86,8 +108,8 @@ def ensure_sheet(spreadsheet, row_count: int):
 
 
 def read_existing_keys(ws) -> List[InvKey]:
-    col_a = ws.col_values(1)
-    col_b = ws.col_values(2)
+    col_a = sheets_retry(ws.col_values, 1)
+    col_b = sheets_retry(ws.col_values, 2)
     keys: List[InvKey] = []
     n = max(len(col_a), len(col_b))
     for i in range(1, n):
@@ -109,26 +131,31 @@ def append_new_key_rows(ws, new_keys: List[InvKey],
         block.append([a, b, skus])
     end_row = start_row + len(block) - 1
     if end_row > ws.row_count:
-        ws.add_rows(end_row - ws.row_count + 100)
-    ws.update(range_name=f"A{start_row}:C{end_row}", values=block)
+        sheets_retry(ws.add_rows, end_row - ws.row_count + 100)
+    sheets_retry(ws.update, range_name=f"A{start_row}:C{end_row}", values=block)
     print(f"新規(ASIN,アカウント)ペア {len(new_keys)}件 を追加（{start_row}〜{end_row}行）",
           file=sys.stderr)
 
 
-def update_sku_column(ws, all_keys: List[InvKey], sku_map: Dict[InvKey, List[str]]):
+def update_sku_column(ws, all_keys: List[InvKey], sku_map: Dict[InvKey, List[str]],
+                      failed_accounts: Set[str] | None = None):
+    """C列(対応SKU)を最新化。取得失敗アカウントの行は触らない。"""
+    failed_accounts = failed_accounts or set()
     if not all_keys:
         return
     updates = []
     for idx, key in enumerate(all_keys, start=2):
+        if key[1] in failed_accounts:
+            continue
         skus = ", ".join(sorted(set(sku_map.get(key, []))))
         updates.append({"range": f"C{idx}", "values": [[skus]]})
     BATCH = 200
     for i in range(0, len(updates), BATCH):
-        ws.batch_update(updates[i:i+BATCH], value_input_option='USER_ENTERED')
+        sheets_batch_update(ws, updates[i:i+BATCH], value_input_option='USER_ENTERED')
 
 
 def find_date_column(ws, date_str: str) -> int | None:
-    row1 = ws.row_values(1)
+    row1 = sheets_retry(ws.row_values, 1)
     for idx, val in enumerate(row1, start=1):
         if idx < 4:
             continue
@@ -138,7 +165,13 @@ def find_date_column(ws, date_str: str) -> int | None:
 
 
 def write_daily_column(spreadsheet, qty_map: Dict[InvKey, int],
-                       sku_map: Dict[InvKey, List[str]], date_str: str):
+                       sku_map: Dict[InvKey, List[str]], date_str: str,
+                       failed_accounts: Set[str] | None = None):
+    """在庫スナップショットを日付列へ書き込む。
+
+    取得に失敗したアカウントのASINは 0 埋めせず、その日付列の既存値を保持する。
+    """
+    failed_accounts = failed_accounts or set()
     all_keys = sorted(qty_map.keys())
     ws = ensure_sheet(spreadsheet, len(all_keys))
 
@@ -149,26 +182,43 @@ def write_daily_column(spreadsheet, qty_map: Dict[InvKey, int],
         append_new_key_rows(ws, new_keys, sku_map, len(existing_keys))
         existing_keys = existing_keys + new_keys
 
-    # SKU列を最新化
-    update_sku_column(ws, existing_keys, sku_map)
+    # SKU列を最新化 (取得失敗アカウントは触らない)
+    update_sku_column(ws, existing_keys, sku_map, failed_accounts)
 
     target_col = find_date_column(ws, date_str)
     if target_col is None:
-        row1 = ws.row_values(1)
+        row1 = sheets_retry(ws.row_values, 1)
         target_col = max(len(row1) + 1, 4)
     if target_col > ws.col_count:
-        ws.add_cols(target_col - ws.col_count + 10)
-
-    values: List[List] = [[date_str]]
-    for key in existing_keys:
-        values.append([int(qty_map.get(key, 0))])
+        sheets_retry(ws.add_cols, target_col - ws.col_count + 10)
 
     col = col_letter(target_col)
-    ws.update(range_name=f"{col}1:{col}{len(values)}", values=values)
+
+    # 取得失敗アカウントのセルを保持するため、既存の列値を先に読む
+    prev_col: List[str] = []
+    if failed_accounts and existing_keys:
+        got = sheets_retry(ws.get, f"{col}2:{col}{len(existing_keys) + 1}")
+        prev_col = [(r[0] if r else "") for r in (got or [])]
+
+    values: List[List] = [[date_str]]
+    kept = 0
+    for i, key in enumerate(existing_keys):
+        if key[1] in failed_accounts:
+            values.append([prev_col[i] if i < len(prev_col) else ""])
+            kept += 1
+            continue
+        values.append([int(qty_map.get(key, 0))])
+
+    if kept:
+        print(f"※ 取得失敗アカウント({', '.join(sorted(failed_accounts))})の"
+              f"{kept}行は既存値を保持しました", file=sys.stderr)
+
+    sheets_retry(ws.update, range_name=f"{col}1:{col}{len(values)}", values=values)
     print(f"→ {date_str} を {col}列に書き込み（{len(values)}行）", file=sys.stderr)
 
 
 def main():
+    set_default_socket_timeout()
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", default=datetime.date.today().strftime("%Y-%m-%d"))
     args = parser.parse_args()
@@ -178,11 +228,21 @@ def main():
         print("エラー: .env を確認", file=sys.stderr)
         sys.exit(1)
 
+    accounts = settings.get_accounts()
     print(f"=== 日次Amazon在庫推移(ASIN) [{args.date}] ===", file=sys.stderr)
-    qty_map, sku_map = fetch_inventory_by_asin(settings)
+    qty_map, sku_map, failed_accounts = fetch_inventory_by_asin(settings)
     if not qty_map:
-        print("在庫データが取れませんでした", file=sys.stderr)
+        print("エラー: 在庫データが1件も取れませんでした。"
+              "0埋めを防ぐため書き込みを中止します", file=sys.stderr)
         sys.exit(1)
+    if failed_accounts and len(failed_accounts) >= len(accounts):
+        print(f"エラー: 全 {len(accounts)} アカウントで在庫取得に失敗しました。"
+              "0埋めを防ぐため書き込みを中止します", file=sys.stderr)
+        sys.exit(1)
+    if failed_accounts:
+        print(f"警告: {len(failed_accounts)}アカウントの在庫取得に失敗 "
+              f"({', '.join(sorted(failed_accounts))}) "
+              f"→ 該当セルは既存値を保持します", file=sys.stderr)
     print(f"対象 (ASIN,アカウント) ペア数: {len(qty_map)}", file=sys.stderr)
 
     import gspread
@@ -196,11 +256,14 @@ def main():
         ],
     )
     gc = gspread.authorize(creds)
-    sp = gc.open_by_key(settings.google_spreadsheet_id)
-    write_daily_column(sp, qty_map, sku_map, args.date)
+    sp = sheets_retry(gc.open_by_key, settings.google_spreadsheet_id)
+    write_daily_column(sp, qty_map, sku_map, args.date,
+                       failed_accounts=failed_accounts)
 
     url = f"https://docs.google.com/spreadsheets/d/{settings.google_spreadsheet_id}"
     print(f"完了 → {url}")
+    if failed_accounts:
+        sys.exit(2)
 
 
 if __name__ == "__main__":

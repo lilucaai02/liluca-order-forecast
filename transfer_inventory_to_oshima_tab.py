@@ -5,7 +5,13 @@
   - RSL在庫実績 (rsl_stock_row): 日次楽天在庫推移 (正規化SKUで max 集約)
   - Stock Crew在庫実績 (stock_crew_stock_row): 日次Yahoo在庫推移 (正規化SKUで max 集約)
 
-値が 0 の日（取得失敗の可能性）は書き込まずスキップする。
+【安全装置】元シートのセルが空白/未定義/数値変換不可の場合は「不明」として扱い、
+該当セルへの書き込みをスキップして転記先の既存値を保持する
+（文字列/数値の "0" は取得成功した正常な0として区別し、他の値と同様に書き込む）。
+複数アカウントが1つの値に合算/集約される場合、寄与する行のうち1つでも不明が
+あればその(キー,日付)全体を不明として扱う（合算値の過小評価を防ぐため）。
+元シートにそのSKUの行自体が無い場合も転記しない（そのチャネルで扱っていない
+商品の既存値を 0 で塗り潰さないため）。
 
 使い方:
   python3 transfer_inventory_to_oshima_tab.py --tab "DS-01 (在庫) "
@@ -20,7 +26,7 @@ import os
 import re
 import sys
 import time
-from typing import Dict, Tuple
+from typing import Dict, Set, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -62,8 +68,26 @@ def normalize_sku(sku: str) -> str:
     return s.strip()
 
 
-def load_source(sp, sheet_name: str, dates: list, key_fn, agg: str):
-    """{(key, date): qty} を返す。agg='sum'|'max'"""
+UNKNOWN = object()  # 取得失敗(空白/未定義/数値変換不可)を示すセンチネル。0とは区別する。
+
+
+def _parse_qty(raw):
+    """セルの生値をintに変換する。空文字列/None/数値変換不可はUNKNOWN(不明)を返す。
+    文字列の"0"や数値0は取得成功した正常な0として扱う。"""
+    if raw is None:
+        return UNKNOWN
+    if isinstance(raw, str) and raw.strip() == "":
+        return UNKNOWN
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return UNKNOWN
+
+
+def load_source(sp, sheet_name: str, dates: list, key_fn, agg: str
+                 ) -> Tuple[Dict[Tuple[str, str], int], Set[Tuple[str, str]]]:
+    """(既知の{(key, date): qty}, 不明な(key,date)の集合) を返す。agg='sum'|'max'。
+    寄与する行のうち1つでも不明があれば、その(key,date)全体を不明として扱う。"""
     ws = retry(sp.worksheet, sheet_name)
     vals = retry(ws.get_all_values)
     hdr = vals[0]
@@ -72,24 +96,26 @@ def load_source(sp, sheet_name: str, dates: list, key_fn, agg: str):
         if v in dates:
             di[v] = i
     out: Dict[Tuple[str, str], int] = {}
+    unknown: Set[Tuple[str, str]] = set()
     for row in vals[1:]:
         if len(row) < 2 or not row[0]:
             continue
         k = key_fn(row[0])
         for d, i in di.items():
-            v = row[i] if i < len(row) else ""
-            if not v:
-                continue
-            try:
-                q = int(v)
-            except ValueError:
-                continue
+            raw = row[i] if i < len(row) else None
+            q = _parse_qty(raw)
             key = (k, d)
+            if q is UNKNOWN:
+                unknown.add(key)
+                out.pop(key, None)
+                continue
+            if key in unknown:
+                continue
             if agg == "sum":
                 out[key] = out.get(key, 0) + q
             else:
                 out[key] = max(out.get(key, q), q)
-    return out
+    return out, unknown
 
 
 def main():
@@ -114,17 +140,17 @@ def main():
     blocks = get_blocks(args.tab)
     src = retry(gc.open_by_key, settings.google_spreadsheet_id)
 
-    amz = load_source(src, "日次Amazon在庫推移", dates, lambda x: x, "sum")
+    amz, amz_unknown = load_source(src, "日次Amazon在庫推移", dates, lambda x: x, "sum")
     try:
-        rsl = load_source(src, "日次楽天在庫推移", dates, normalize_sku, "max")
+        rsl, rsl_unknown = load_source(src, "日次楽天在庫推移", dates, normalize_sku, "max")
     except Exception as e:
         print(f"楽天在庫読み込みスキップ: {e}", file=sys.stderr)
-        rsl = {}
+        rsl, rsl_unknown = {}, set()
     try:
-        sc = load_source(src, "日次Yahoo在庫推移", dates, normalize_sku, "max")
+        sc, sc_unknown = load_source(src, "日次Yahoo在庫推移", dates, normalize_sku, "max")
     except Exception as e:
         print(f"Yahoo在庫読み込みスキップ: {e}", file=sys.stderr)
-        sc = {}
+        sc, sc_unknown = {}, set()
 
     dest = retry(gc.open_by_key, DEST_SPREADSHEET_ID)
     ws = retry(dest.worksheet, args.tab)
@@ -137,35 +163,55 @@ def main():
 
     updates = []
     log = []
+    skip_log = []
+    total_cells = 0
     for blk in blocks:
         for d in dates:
             c = d_to_c.get(d)
             if not c:
                 continue
-            # FBA (ASIN合算)
-            q = amz.get((blk["asin"], d), 0)
-            if q > 0 and "stock_row" in blk:
-                updates.append({"range": f"{col_letter(c)}{blk['stock_row']}",
+            # 在庫は「元シートに行があって値も取れた」ときだけ転記する。
+            #   - 不明 (セルが空白)             → スキップ (既存値を保持)
+            #   - 元シートにSKU行自体が無い     → スキップ (そのチャネルで扱っていない
+            #                                     商品を 0 で塗り潰さないため)
+            #   - 値が取れた                    → 0 でも転記する (実在庫0は正しい情報)
+            for row_key, src, unknown_set, label in (
+                ("stock_row", amz, amz_unknown, "FBA"),
+                ("rsl_stock_row", rsl, rsl_unknown, "RSL"),
+                ("stock_crew_stock_row", sc, sc_unknown, "SC"),
+            ):
+                if row_key not in blk:
+                    continue
+                total_cells += 1
+                key = ((blk["asin"], d) if row_key == "stock_row"
+                       else (normalize_sku(blk["code"]), d))
+                if key in unknown_set:
+                    skip_log.append(f"※ 元シートが空白(取得失敗の可能性)のため転記をスキップ: "
+                                    f"{blk['code']} {label} / {d}")
+                    continue
+                if key not in src:
+                    skip_log.append(f"※ 元シートに該当SKUの行が無いため転記をスキップ: "
+                                    f"{blk['code']} {label} / {d}")
+                    continue
+                q = src[key]
+                updates.append({"range": f"{col_letter(c)}{blk[row_key]}",
                                 "values": [[q]]})
-                log.append(f"  {blk['code']} FBA {d}: {q}")
-            # RSL (正規化コード)
-            q2 = rsl.get((normalize_sku(blk["code"]), d), 0)
-            if q2 > 0 and "rsl_stock_row" in blk:
-                updates.append({"range": f"{col_letter(c)}{blk['rsl_stock_row']}",
-                                "values": [[q2]]})
-                log.append(f"  {blk['code']} RSL {d}: {q2}")
-            # Stock Crew = Yahoo在庫 (正規化コード)
-            q3 = sc.get((normalize_sku(blk["code"]), d), 0)
-            if q3 > 0 and "stock_crew_stock_row" in blk:
-                updates.append({
-                    "range": f"{col_letter(c)}{blk['stock_crew_stock_row']}",
-                    "values": [[q3]]})
-                log.append(f"  {blk['code']} SC {d}: {q3}")
+                log.append(f"  {blk['code']} {label} {d}: {q}")
 
     print(f"=== [大島コピー / {args.tab}] 在庫実績転記 ({dates[0]}〜{dates[-1]}) ===",
           file=sys.stderr)
     for line in log:
         print(line, file=sys.stderr)
+    for line in skip_log:
+        print(line, file=sys.stderr)
+    if skip_log:
+        print(f"※ 転記スキップ 合計 {len(skip_log)} セル（元シート未取得）", file=sys.stderr)
+
+    if total_cells and len(skip_log) == total_cells:
+        print(f"\nエラー: 全セル({total_cells}件)が元シート未取得(不明)のため転記できません",
+              file=sys.stderr)
+        sys.exit(1)
+
     if args.dry_run:
         print(f"[dry-run] {len(updates)}セル 書き込みスキップ", file=sys.stderr)
         return
