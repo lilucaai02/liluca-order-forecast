@@ -17,9 +17,16 @@ SKU バリエーション (XXX(A), XXX(A-2)) ごとの内訳は取得できな�
 
 動作:
   - 在庫に存在する 全ASIN × そのASINを取り扱うアカウント の全ペアを記録
-  - 販売 0 の日もセルに 0 が入る
+  - 取得に成功して販売 0 の日はセルに 0 が入る
+  - SP-API の取得に失敗した (ASIN,アカウント) は「販売0」と区別し、
+    該当セルを書き込まずに既存値を保持する（0埋めによる実績破壊の防止）
   - 既存日列があれば上書き（再取得対応）
   - 新しい日付なら最終列の次に列追加
+
+終了コード:
+  0 = 全ASIN取得成功
+  1 = 在庫が0件、または全ASIN取得失敗（書き込み中止）
+  2 = 一部ASINが取得失敗（成功分のみ書き込み済み）
 
 使い方:
   python3 daily_amazon_sales.py                                      # 昨日と一昨日
@@ -32,6 +39,7 @@ import argparse
 import datetime
 import os
 import sys
+import time
 from typing import Dict, List, Set, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -44,6 +52,106 @@ SHEET_NAME = "日次Amazon販売推移"
 
 # key = (asin, account_name)
 SalesKey = Tuple[str, str]
+
+# --- SP-API getOrderMetrics のレート制限対策 --------------------------------
+# getOrderMetrics の公称レートは 0.5 req/秒 (バースト分を使い切ると以降は
+# QuotaExceeded)。ASIN 単位で 150 回以上叩くため、間隔を空けないと後半の
+# ASIN が高確率で QuotaExceeded になる。
+ORDER_METRICS_MIN_INTERVAL = 2.0  # 秒。呼び出し間隔の下限
+ORDER_METRICS_MAX_ATTEMPTS = 5    # 初回 + リトライ4回
+ORDER_METRICS_BACKOFF_START = 5.0
+ORDER_METRICS_BACKOFF_MAX = 60.0
+
+# リトライ対象と判断するエラー文字列 (スロットリング / 一時障害)
+RETRYABLE_MARKERS = (
+    "quotaexceeded",
+    "429",
+    "too many requests",
+    "throttl",
+    "500",
+    "502",
+    "503",
+    "504",
+    "internalerror",
+    "internalfailure",
+    "internal server error",
+    "serviceunavailable",
+    "service unavailable",
+    "gateway",
+    "timeout",
+    "timed out",
+    "connection",
+    "temporarily",
+)
+
+# 最後に getOrderMetrics を呼んだ時刻 (ペーシング用)
+_last_metrics_call: List[float] = [0.0]
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """スロットリング/一時障害なら True。権限エラー等の恒久的失敗は False。"""
+    msg = f"{type(exc).__name__} {exc}".lower()
+    return any(marker in msg for marker in RETRYABLE_MARKERS)
+
+
+def _pace_order_metrics() -> None:
+    """前回呼び出しから ORDER_METRICS_MIN_INTERVAL 秒空ける。"""
+    elapsed = time.monotonic() - _last_metrics_call[0]
+    if _last_metrics_call[0] and elapsed < ORDER_METRICS_MIN_INTERVAL:
+        time.sleep(ORDER_METRICS_MIN_INTERVAL - elapsed)
+    _last_metrics_call[0] = time.monotonic()
+
+
+def fetch_order_metrics_with_retry(client, asin: str, account_name: str,
+                                   interval_start: str, interval_end: str) -> List[dict]:
+    """getOrderMetrics を指数バックオフでリトライ。
+
+    ORDER_METRICS_MAX_ATTEMPTS 回試しても駄目なら最後の例外を送出する。
+    呼び出し側で必ず捕捉し「取得失敗」として記録すること
+    (取得失敗を販売0として書き込んではいけない)。
+    """
+    delay = ORDER_METRICS_BACKOFF_START
+    last_exc: BaseException | None = None
+    for attempt in range(1, ORDER_METRICS_MAX_ATTEMPTS + 1):
+        _pace_order_metrics()
+        try:
+            return client.get_order_metrics(
+                interval_start=interval_start,
+                interval_end=interval_end,
+                granularity="Day",
+                asin=asin,
+            )
+        except Exception as e:  # noqa: BLE001 - 種別は _is_retryable で判定
+            last_exc = e
+            if attempt >= ORDER_METRICS_MAX_ATTEMPTS or not _is_retryable(e):
+                raise
+            print(f"  [Amazon:{account_name}] ASIN {asin} 一時エラー "
+                  f"({attempt}/{ORDER_METRICS_MAX_ATTEMPTS - 1}) "
+                  f"{delay:.0f}秒待機: {e}", file=sys.stderr)
+            time.sleep(delay)
+            delay = min(delay * 2, ORDER_METRICS_BACKOFF_MAX)
+    assert last_exc is not None
+    raise last_exc
+
+
+def fetch_inventory_with_retry(client, account_name: str):
+    """FBA在庫取得を指数バックオフでリトライ。
+
+    在庫取得が失敗するとそのアカウントの全ASINが販売取得の対象から外れ、
+    実績が丸ごと欠測するため、orderMetrics と同様にリトライする。
+    """
+    delay = ORDER_METRICS_BACKOFF_START
+    for attempt in range(1, ORDER_METRICS_MAX_ATTEMPTS + 1):
+        try:
+            return fetch_inventory(client)
+        except Exception as e:  # noqa: BLE001 - 種別は _is_retryable で判定
+            if attempt >= ORDER_METRICS_MAX_ATTEMPTS or not _is_retryable(e):
+                raise
+            print(f"  [Amazon:{account_name}] 在庫取得 一時エラー "
+                  f"({attempt}/{ORDER_METRICS_MAX_ATTEMPTS - 1}) "
+                  f"{delay:.0f}秒待機: {e}", file=sys.stderr)
+            time.sleep(delay)
+            delay = min(delay * 2, ORDER_METRICS_BACKOFF_MAX)
 
 
 def with_retry(fn, *args, **kwargs):
@@ -82,7 +190,7 @@ def collect_asin_sku_map(settings: Settings) -> Dict[SalesKey, List[str]]:
     for acc in settings.get_accounts():
         try:
             client = SPClient(settings, account=acc)
-            items = fetch_inventory(client)
+            items = fetch_inventory_with_retry(client, acc.name)
             for item in items:
                 if not item.asin or not item.seller_sku:
                     continue
@@ -90,7 +198,11 @@ def collect_asin_sku_map(settings: Settings) -> Dict[SalesKey, List[str]]:
                 result.setdefault(key, []).append(item.seller_sku)
             print(f"[Amazon:{acc.name}] {len(items)}件取得", file=sys.stderr)
         except Exception as e:
-            print(f"[Amazon:{acc.name}] ASIN/SKU収集エラー: {e}", file=sys.stderr)
+            # 在庫取得に失敗するとこのアカウントのASINが1件も対象にならず、
+            # 販売実績の書き込み側でも「未問い合わせ」としてスキップされる。
+            # 実績は壊れないが欠測になるため、はっきり警告を出す。
+            print(f"[Amazon:{acc.name}] ASIN/SKU収集エラー(このアカウントの実績は"
+                  f"今回更新されません): {e}", file=sys.stderr)
     return result
 
 
@@ -99,12 +211,17 @@ def fetch_sales(
     asin_keys: List[SalesKey],
     from_date: str,
     to_date: str,
-) -> Dict[Tuple[str, str, str], int]:
+) -> Tuple[Dict[Tuple[str, str, str], int], Set[SalesKey]]:
     """
-    返り値: {(asin, account_name, date_str): qty, ...}
-    販売 0 は含めない。書き込み側で0埋めする。
+    返り値: (sales, failed_keys)
+      sales       = {(asin, account_name, date_str): qty, ...} 販売 0 は含めない
+      failed_keys = 取得に失敗した (asin, account_name) の集合
+
+    重要: failed_keys のペアは「販売0」ではなく「不明」である。
+    書き込み側で 0 埋めしてはいけない (既存の正しい実績を壊すため)。
     """
     result: Dict[Tuple[str, str, str], int] = {}
+    failed_keys: Set[SalesKey] = set()
     interval_start = f"{from_date}T00:00:00+09:00"
     interval_end = f"{to_date}T23:59:59+09:00"
 
@@ -114,24 +231,28 @@ def fetch_sales(
         asin_by_account.setdefault(acc_name, []).append(asin)
 
     for acc in settings.get_accounts():
-        asins_for_acc = asin_by_account.get(acc.name, [])
+        asins_for_acc = sorted(set(asin_by_account.get(acc.name, [])))
         if not asins_for_acc:
             continue
         try:
             client = SPClient(settings, account=acc)
         except Exception as e:
+            # クライアントが作れない = このアカウントの全ASINが「不明」。
+            # 0埋めされないよう全件を失敗として記録する。
             print(f"[Amazon:{acc.name}] クライアント生成失敗: {e}", file=sys.stderr)
+            failed_keys.update((asin, acc.name) for asin in asins_for_acc)
             continue
 
-        for asin in sorted(set(asins_for_acc)):
+        acc_failed = 0
+        for asin in asins_for_acc:
             try:
-                metrics = client.get_order_metrics(
-                    interval_start=interval_start,
-                    interval_end=interval_end,
-                    granularity="Day",
-                    asin=asin,
+                metrics = fetch_order_metrics_with_retry(
+                    client, asin, acc.name, interval_start, interval_end,
                 )
-            except Exception:
+            except Exception as e:  # noqa: BLE001 - 失敗内容を残して継続
+                failed_keys.add((asin, acc.name))
+                acc_failed += 1
+                print(f"[Amazon:{acc.name}] ASIN {asin} 取得失敗: {e}", file=sys.stderr)
                 continue
 
             for m in metrics:
@@ -144,10 +265,12 @@ def fetch_sales(
                 units = int(m.get("unitCount", 0) or 0)
                 if units > 0:
                     result[(asin, acc.name, start_date)] = units
-        print(f"[Amazon:{acc.name}] orderMetrics 取得完了 ({len(set(asins_for_acc))} ASIN)",
+        print(f"[Amazon:{acc.name}] orderMetrics 取得完了 "
+              f"({len(asins_for_acc) - acc_failed}/{len(asins_for_acc)} ASIN 成功"
+              f"{f', {acc_failed}件失敗' if acc_failed else ''})",
               file=sys.stderr)
 
-    return result
+    return result, failed_keys
 
 
 def col_letter(n: int) -> str:
@@ -239,7 +362,18 @@ def write_sales(
     sales: Dict[Tuple[str, str, str], int],
     sku_map: Dict[SalesKey, List[str]],
     dates: List[str],
+    failed_keys: Set[SalesKey] | None = None,
 ):
+    """販売実績をシートへ書き込む。
+
+    failed_keys (取得失敗) と「そもそも問い合わせていないペア」の日付セルは
+    書き込みをスキップし、既存値をそのまま残す。
+    「取得成功して本当に販売0」のときだけ 0 を書く。
+    """
+    failed_keys = failed_keys or set()
+    # 実際に取得を試みたペア = 今回の在庫から作られた sku_map のキー
+    attempted_keys: Set[SalesKey] = set(sku_map.keys())
+
     # すべての (ASIN, アカウント) ペアを書き込み対象とする（在庫保持中の全ペア）
     all_keys: List[SalesKey] = list(sku_map.keys())
 
@@ -275,16 +409,36 @@ def write_sales(
     # 行番号マッピング
     key_to_row: Dict[SalesKey, int] = {k: idx for idx, k in enumerate(existing_keys, start=2)}
 
-    # 全ペア × 全日付セルを 0 or 販売数で埋める
+    # 取得に成功したペアだけ 0 or 販売数で埋める。
+    # 取得失敗・未問い合わせのペアはスキップして既存値を保持する。
     updates = []
+    skipped_failed: List[SalesKey] = []
+    skipped_unqueried = 0
     for key in existing_keys:
         row = key_to_row[key]
+        if key in failed_keys:
+            skipped_failed.append(key)
+            continue
+        if key not in attempted_keys:
+            # 在庫から消えた等で今回問い合わせていないペア。0埋めすると
+            # 過去の実績を壊すのでスキップする。
+            skipped_unqueried += 1
+            continue
         for d in dates:
             if d not in date_cols:
                 continue
             col = col_letter(date_cols[d])
             qty = sales.get((key[0], key[1], d), 0)
             updates.append({"range": f"{col}{row}", "values": [[qty]]})
+
+    if skipped_failed:
+        print(f"※ 取得失敗のため書き込みをスキップ (既存値を保持): "
+              f"{len(skipped_failed)}ペア", file=sys.stderr)
+        for (a, b) in sorted(skipped_failed):
+            print(f"    スキップ: ASIN {a} / {b}", file=sys.stderr)
+    if skipped_unqueried:
+        print(f"※ 今回未問い合わせのため書き込みをスキップ: {skipped_unqueried}ペア",
+              file=sys.stderr)
 
     if updates:
         BATCH = 200
@@ -326,9 +480,25 @@ def main():
     sku_map = collect_asin_sku_map(settings)
     print(f"\n対象 (ASIN,アカウント) ペア数: {len(sku_map)}", file=sys.stderr)
 
+    if not sku_map:
+        print("エラー: 在庫から (ASIN,アカウント) を1件も取得できませんでした。"
+              "0埋めを防ぐため中止します", file=sys.stderr)
+        sys.exit(1)
+
     # 2. 販売実績を取得
-    sales = fetch_sales(settings, list(sku_map.keys()), args.from_date, args.to_date)
+    sales, failed_keys = fetch_sales(
+        settings, list(sku_map.keys()), args.from_date, args.to_date)
     print(f"取得した販売レコード(>0): {len(sales)}件", file=sys.stderr)
+
+    # 安全装置: 全ASINが取得失敗なら書き込まずに異常終了する。
+    # (0埋めすると「売上0」と区別が付かず、正しい実績を破壊するため)
+    if failed_keys and len(failed_keys) >= len(sku_map):
+        print(f"エラー: 全 {len(sku_map)} ペアで orderMetrics 取得に失敗しました。"
+              "0埋めを防ぐため書き込みを中止します", file=sys.stderr)
+        sys.exit(1)
+    if failed_keys:
+        print(f"警告: {len(failed_keys)}ペアの取得に失敗 "
+              f"(該当セルは書き込まず既存値を保持します)", file=sys.stderr)
 
     # 3. シートに書き込み
     import gspread
@@ -348,10 +518,13 @@ def main():
         datetime.datetime.strptime(args.from_date, "%Y-%m-%d").date(),
         datetime.datetime.strptime(args.to_date, "%Y-%m-%d").date(),
     )
-    write_sales(sp, sales, sku_map, dates)
+    write_sales(sp, sales, sku_map, dates, failed_keys)
 
     url = f"https://docs.google.com/spreadsheets/d/{settings.google_spreadsheet_id}"
     print(f"\n完了 → {url}")
+    if failed_keys:
+        # 転記側や cron から失敗を検知できるよう非ゼロで終了する
+        sys.exit(2)
 
 
 if __name__ == "__main__":
