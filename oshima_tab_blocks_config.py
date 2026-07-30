@@ -62,11 +62,17 @@ OSHIMA_TAB_BLOCKS: dict[str, list[dict]] = {
         {"code": "TG-01xl-blacklogo", "asin": "B0DFWJFTCP", "asin_row": 1142, "code_row": 1143, "sales_row": 1150, "stock_row": 1166, "rakuten_sales_row": 1156, "rsl_stock_row": 1168, "yahoo_sales_row": 1162, "stock_crew_stock_row": 1170, "change_qty_row": 1186, "from_row": 1187, "to_row": 1188, "fba_naganuma_row": 1165, "rsl_naganuma_row": 1167, "sc_naganuma_row": 1169, "total_naganuma_row": 1184},
     ],
     # 2026-07-29: ラベルから長沼を除去・旧総数予想行を削除
+    # 2026-07-30: ASIN/商品コードを現行品(TG-02*-black)へ修正。
+    #   タブのA列には旧品(tg-01*-short)のASIN/コードが残っているが、
+    #   s と xl は旧ASIN(B0DT5TYMZT / B0DFWMGZRD)が廃番で在庫・販売とも
+    #   30日間ずっと0のため、ダッシュボードが常に在庫0表示になっていた。
+    #   現行ASINは s=B0GR5SMTMS / xl=B0GR5P9YMN (m・l は旧ASINのまま現行SKUを内包)。
+    #   楽天/Yahoo在庫は code で引くため、code も tg-02*-black へ揃える。
     "TG-02(在庫)": [
-        {"code": "tg-01s-short", "asin": "B0DT5TYMZT", "asin_row": 1, "code_row": 3, "sales_row": 10, "stock_row": 26, "rakuten_sales_row": 16, "rsl_stock_row": 28, "yahoo_sales_row": 22, "stock_crew_stock_row": 30, "change_qty_row": 46, "from_row": 47, "to_row": 48, "fba_naganuma_row": 25, "rsl_naganuma_row": 27, "sc_naganuma_row": 29, "total_naganuma_row": 44},
-        {"code": "tg-01m-short", "asin": "B0FC1VJGSW", "asin_row": 62, "code_row": 63, "sales_row": 70, "stock_row": 86, "rakuten_sales_row": 76, "rsl_stock_row": 88, "yahoo_sales_row": 82, "stock_crew_stock_row": 90, "change_qty_row": 106, "from_row": 107, "to_row": 108, "fba_naganuma_row": 85, "rsl_naganuma_row": 87, "sc_naganuma_row": 89, "total_naganuma_row": 104},
-        {"code": "tg-01l-short", "asin": "B0FC216S1Z", "asin_row": 122, "code_row": 123, "sales_row": 130, "stock_row": 146, "rakuten_sales_row": 136, "rsl_stock_row": 148, "yahoo_sales_row": 142, "stock_crew_stock_row": 150, "change_qty_row": 166, "from_row": 167, "to_row": 168, "fba_naganuma_row": 145, "rsl_naganuma_row": 147, "sc_naganuma_row": 149, "total_naganuma_row": 164},
-        {"code": "tg-01xl-short", "asin": "B0DFWMGZRD", "asin_row": 182, "code_row": 183, "sales_row": 190, "stock_row": 206, "rakuten_sales_row": 196, "rsl_stock_row": 208, "yahoo_sales_row": 202, "stock_crew_stock_row": 210, "change_qty_row": 226, "from_row": 227, "to_row": 228, "fba_naganuma_row": 205, "rsl_naganuma_row": 207, "sc_naganuma_row": 209, "total_naganuma_row": 224},
+        {"code": "tg-02s-black", "asin": "B0GR5SMTMS", "asin_row": 1, "code_row": 3, "sales_row": 10, "stock_row": 26, "rakuten_sales_row": 16, "rsl_stock_row": 28, "yahoo_sales_row": 22, "stock_crew_stock_row": 30, "change_qty_row": 46, "from_row": 47, "to_row": 48, "fba_naganuma_row": 25, "rsl_naganuma_row": 27, "sc_naganuma_row": 29, "total_naganuma_row": 44},
+        {"code": "tg-02m-black", "asin": "B0FC1VJGSW", "asin_row": 62, "code_row": 63, "sales_row": 70, "stock_row": 86, "rakuten_sales_row": 76, "rsl_stock_row": 88, "yahoo_sales_row": 82, "stock_crew_stock_row": 90, "change_qty_row": 106, "from_row": 107, "to_row": 108, "fba_naganuma_row": 85, "rsl_naganuma_row": 87, "sc_naganuma_row": 89, "total_naganuma_row": 104},
+        {"code": "tg-02l-black", "asin": "B0FC216S1Z", "asin_row": 122, "code_row": 123, "sales_row": 130, "stock_row": 146, "rakuten_sales_row": 136, "rsl_stock_row": 148, "yahoo_sales_row": 142, "stock_crew_stock_row": 150, "change_qty_row": 166, "from_row": 167, "to_row": 168, "fba_naganuma_row": 145, "rsl_naganuma_row": 147, "sc_naganuma_row": 149, "total_naganuma_row": 164},
+        {"code": "tg-02xl-black", "asin": "B0GR5P9YMN", "asin_row": 182, "code_row": 183, "sales_row": 190, "stock_row": 206, "rakuten_sales_row": 196, "rsl_stock_row": 208, "yahoo_sales_row": 202, "stock_crew_stock_row": 210, "change_qty_row": 226, "from_row": 227, "to_row": 228, "fba_naganuma_row": 205, "rsl_naganuma_row": 207, "sc_naganuma_row": 209, "total_naganuma_row": 224},
     ],
     # 2026-07-29: ラベルから長沼を除去・旧総数予想行を削除
     "PCI-01": [
