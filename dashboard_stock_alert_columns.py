@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ダッシュボード２に「梱包」「販売調整」「発注」「対応済み」「調整の目安」を作る。
+"""ダッシュボード２に「販売調整」「対応済み」「調整の目安」を作る。
 
 運用ルール (ユーザーの前提):
   在庫が30日分になった時点で補充が到着している想定で回している。
@@ -8,40 +8,28 @@
   1ヶ月の猶予があればセールを調整して在庫を延ばせるので、
   30日を切った時点でアラートを出して判断材料にする。
 
---- 2026-07-31 の変更 (1列 → 4列) ---
-以前は「在庫警告」1列に 梱包・セール調整・発注 が混在していて、
-担当者が自分に関係する行を探せなかった。そこで担当別に3列へ分割した。
-    梱包     (G) … 倉庫担当  : 手元在庫を送れば解決する分
-    販売調整 (H) … 販促担当  : 送っても足りない分は売る量を絞る
-    発注     (I) … 仕入担当  : 工場に頼む分
-    対応済み (J) … ユーザーが対応日を手入力する欄 (数式なし)
-    調整の目安(K) … 従来どおり
-
-重要: 3列は「それぞれ独立に」判定する。
-  以前は上から順に評価して1つしか出せなかったが、実際には
-  「手元の分は送る」+「足りない分はセールも絞る」+「不足分は発注する」が
-  同時に起きる。同時に複数列へ出るのが正常。
+--- 経緯 -----------------------------------------------------------------
+2026-07-31 (1): 「在庫警告」1列に梱包・セール調整・発注が混在していて
+  担当者が自分の行を探せなかったため、担当別に3列 (梱包/販売調整/発注) へ分割。
+2026-07-31 (2 / 現行): その「梱包」「発注」列を削除した。
+  梱包 = MIN(手元在庫, FBA梱包必要数)、発注 = 発注個数予測 − 発注中 と
+  「必要総量とは違う数」を出していたため、隣の AB「FBA梱包必要数」・
+  Z「発注個数予測」と数字が食い違って紛らわしい、という指摘による。
+  梱包・発注は既存の数値列を見れば分かるので文言列は持たず、
+  ChatWork通知だけを既存列 (AB / Z・AA) から組み立てる
+  (check_sales_anomaly.py)。シートに残すのは次の3列:
+    販売調整 (G) … 送っても足りないので売る量を絞る、という判断だけ
+    対応済み (H) … ユーザーが対応日を手入力する欄 (数式なし)
+    調整の目安(I) … 従来どおり
 
 判定 (在庫日数 = FBA残り日数 C列 / 手元在庫 = 総在庫 - FBA - RSL - SC):
-  3列共通の前提: 在庫日数が数値でない or 30より大きい → 3列とも空欄
+  前提: 在庫日数が数値でない or 30より大きい → 空欄
 
-  [G 梱包]
-    在庫日数 <= 0                        → ❌ 欠品中          (赤)
-    手元在庫 <= 0 or 梱包必要数 <= 0     → (空欄)
-    在庫日数 <= 15                       → 🔥 急いで◯個送る   (橙)
-    それ以外                             → 🚚 ◯個送る         (黄)
-      ◯ = MIN(手元在庫, FBA梱包必要数) の整数
-
-  [H 販売調整]  手元在庫 < FBA梱包必要数 のときだけ (= 梱包しても足りない)
+  [販売調整]  手元在庫 < FBA梱包必要数 のときだけ (= 梱包しても足りない)
     在庫日数 <= 15                       → 🛑 セール全停止    (赤)
     それ以外                             → 🔽 セール減らす    (橙)
 
-  [I 発注]      発注中個数 < 発注個数予測 のときだけ
-    総数発注残り日数が ✖️ or マイナス    → 🏭 至急◯個発注     (赤)
-    それ以外                             → 🏭 ◯個発注         (橙)
-      ◯ = 発注個数予測 - 発注中個数 の整数
-
-  [J 対応済み] に日付が入っていたら、上の判定より優先して3列とも:
+  [対応済み] に日付が入っていたら、上の判定より優先して:
     経過 <= DONE_VALID_DAYS 日           → ✓ 済 M/d           (灰)
     それを過ぎてもまだアラート条件のまま → ⚠ 未着 ◯日経過     (赤)
     (アラート条件から外れていれば空欄。= 入庫して解決した)
@@ -52,7 +40,7 @@
   文言・色・日数の定数は stock_alert_labels.py に集約している。
 
 --- 調整の目安 ---
-3列のいずれかが空欄でない商品にのみ表示:
+「販売調整」が空欄でない商品にのみ表示:
   「このまま◯日 ／ 停止で◯日 ／ 14日持たせるには◯個/日」
 
   このまま◯日 = FBA残り日数 (C列) …… 何もしなければ在庫が尽きるまでの日数
@@ -99,6 +87,7 @@ from stock_alert_labels import (
     H_DONE,
     H_HINT,
     LEGACY_ALERT_HEADER,
+    LEGACY_DROPPED_HEADERS,
     LEGACY_MATCH_TEXTS,
     M_DONE,
     M_OVERDUE,
@@ -108,20 +97,17 @@ from stock_alert_labels import (
 DEST_ID = "1MzyWaqefWZvHcR4nHSrfzgwXaBA4oe-E9MlfhNjZTAU"
 DASH = "ダッシュボード２"
 
-# 新設する4列 (梱包 / 販売調整 / 発注 / 対応済み)。調整の目安はこの右に残る。
-N_NEW = len(NEW_HEADERS)          # = 4
-N_INSERT = N_NEW - 1              # 旧「在庫警告」列を1列目に流用するので3列だけ挿入
+# 管理する列 (販売調整 / 対応済み)。調整の目安はこの右に残る。
+N_NEW = len(NEW_HEADERS)          # = 2
+N_INSERT = N_NEW - 1              # 旧「在庫警告」列を1列目に流用するので1列だけ挿入
 
 # 判定・表示に使う既存ヘッダー (実際の列位置はヘッダー文字列から解決する)
-H_ORDER_DAYS = "総数発注残り日数"
 H_DAYS = "FBA残り日数"
 H_FBA_DATE = "FBA在庫切れ予測日"      # 参照タブ/行の解決に使う
 H_TOTAL_STOCK = ""                    # 総在庫 (ヘッダーが空欄の列)
 H_FBA = "FBA在庫数"
 H_RSL = "RSL在庫数"
 H_SC = "ストッククルー在庫数"
-H_ORDERING = "発注中個数"
-H_ORDER_QTY = "発注個数予測"
 H_PACK_NEED = "FBA梱包必要数"
 
 # 商品タブ側のA列ラベル
@@ -291,50 +277,22 @@ def refs(cols: dict, r: int) -> dict:
         "days": days,
         "hand": hand,
         "need": f"N(${cols['need']}{r})",
-        "ordering": f"N(${cols['ordering']}{r})",
-        "order_qty": f"N(${cols['order_qty']}{r})",
-        "order_days": f"${cols['order_days']}{r}",
         "done": f"${cols['done']}{r}",
     }
 
 
-def base_pack(x: dict) -> str:
-    """G列「梱包」の素の判定 (対応済みを考慮しない)。"""
-    send = f'TEXT(INT(MIN({x["hand"]},{x["need"]})),"0")'
-    return (
-        f'IF({x["days"]}<=0,"❌ 欠品中",'
-        f'IF(OR({x["hand"]}<=0,{x["need"]}<=0),"",'
-        f'IF({x["days"]}<={DAYS_URGENT},"🔥 急いで"&{send}&"個送る",'
-        f'"🚚 "&{send}&"個送る")))')
-
-
 def base_sale(x: dict) -> str:
-    """H列「販売調整」の素の判定。梱包しても足りないときだけ出す。"""
+    """「販売調整」の素の判定。梱包しても足りないときだけ出す。"""
     return (
         f'IF({x["hand"]}<{x["need"]},'
         f'IF({x["days"]}<={DAYS_URGENT},"🛑 セール全停止","🔽 セール減らす"),"")')
 
 
-def base_order(x: dict) -> str:
-    """I列「発注」の素の判定。発注中が発注個数予測に足りないときだけ出す。
-
-    「至急」は総数発注残り日数が ✖️ (数値でない文字列) かマイナスのとき。
-    空欄は「まだ算出できていない」だけなので至急にはしない。
-    """
-    short = f'TEXT(INT({x["order_qty"]}-{x["ordering"]}),"0")'
-    od = x["order_days"]
-    urgent = (f'OR(AND(ISNUMBER({od}),{od}<0),'
-              f'AND(NOT(ISNUMBER({od})),{od}<>""))')
-    return (
-        f'IF({x["ordering"]}<{x["order_qty"]},'
-        f'IF({urgent},"🏭 至急"&{short}&"個発注","🏭 "&{short}&"個発注"),"")')
-
-
-BASE_BUILDERS = {"pack": base_pack, "sale": base_sale, "order": base_order}
+BASE_BUILDERS = {"sale": base_sale}
 
 
 def build_alert_formula(col_key: str, cols: dict, r: int) -> str:
-    """梱包 / 販売調整 / 発注 いずれか1列の数式。
+    """アラート列 (現行は「販売調整」のみ) の数式。
 
     構造:
       IFERROR(LET(base, <素の判定>,
@@ -363,7 +321,8 @@ def build_hint_formula(cols: dict, r: int, tab: str, wk7: int, wavg: int) -> str
       このまま = FBA残り日数 (C列) をそのまま
       停止で   = FBA在庫数 ÷ 抑制ペース (切り捨て)
       14日     = HINT_TARGET_DAYS
-    3列 (梱包/販売調整/発注) がすべて空欄の行には出さない。
+    アラート列 (現行は「販売調整」のみ) が空欄の行には出さない。
+    セールをどれだけ絞るかの判断材料なので、参照するのは販売調整列だけ。
     """
     t = f"'{tab}'"
 
@@ -373,7 +332,8 @@ def build_hint_formula(cols: dict, r: int, tab: str, wk7: int, wavg: int) -> str
     pace = f"MAX({at(wk7)},{at(wavg)})"
     fba = f"N(${cols['fba']}{r})"
     days = f"${cols['days']}{r}"
-    empty = "AND(" + ",".join(f'${cols[k]}{r}=""' for k in COLUMN_ORDER) + ")"
+    conds = [f'${cols[k]}{r}=""' for k in COLUMN_ORDER]
+    empty = conds[0] if len(conds) == 1 else "AND(" + ",".join(conds) + ")"
     return (
         f'=IFERROR(IF({empty},"",'
         f'"このまま"&TEXT(ROUND({days},0),"0")&"日 ／ "&'
@@ -436,6 +396,15 @@ def main() -> int:
         print(f"ヘッダー {H_HINT!r} が見つかりません", file=sys.stderr)
         return 1
 
+    # 2026-07-31 に削除した「梱包」「発注」列が残っていたら知らせる。
+    # (数量が FBA梱包必要数 / 発注個数予測 と食い違って紛らわしいため廃止した)
+    # 列の削除は取り消せないので、ここでは自動削除せず警告だけにとどめる。
+    stale = [h for h in LEGACY_DROPPED_HEADERS if h in header]
+    if stale:
+        print(f"\n⚠ 廃止した列 {stale} が残っています。"
+              f"FBA梱包必要数 / 発注個数予測 と数字が食い違うので、"
+              f"手で削除してください", file=sys.stderr)
+
     # 挿入は「1列目 (=旧在庫警告 / 梱包)」の直後。1列目はその場で作り替える。
     insert_at = anchor + 1
     shift = 0 if args.formulas_only else N_INSERT
@@ -462,14 +431,11 @@ def main() -> int:
         return a1col(i0 + 1 + (shift if i0 >= insert_at else 0))
 
     cols = {
-        "order_days": newcol(H_ORDER_DAYS),
         "days": newcol(H_DAYS),
         "total": newcol(H_TOTAL_STOCK),
         "fba": newcol(H_FBA),
         "rsl": newcol(H_RSL),
         "sc": newcol(H_SC),
-        "ordering": newcol(H_ORDERING),
-        "order_qty": newcol(H_ORDER_QTY),
         "need": newcol(H_PACK_NEED),
         "hint": newcol(H_HINT),
     }
@@ -618,12 +584,12 @@ def main() -> int:
     hint_idx = anchor + N_NEW
 
     reqs = [
-        # ヘッダー (梱包/販売調整/発注/対応済み)
+        # ヘッダー (販売調整/対応済み)
         {"repeatCell": {
             "range": col_range(anchor, N_NEW, 0, 1),
             "cell": cell_fmt(HEADER_BG, "CENTER", WHITE, True),
             "fields": FIELDS}},
-        # 3列のデータ行: 中央寄せ・黒字・白地 (隣接列からの引き継ぎ防止)。
+        # アラート列のデータ行: 中央寄せ・黒字・白地 (隣接列からの引き継ぎ防止)。
         # 表示は必ず文字列なので、旧「在庫警告」列から引き継いだ日付書式を
         # TEXT に戻しておく (数値が紛れ込んだときに日付として化けるのを防ぐ)。
         {"repeatCell": {
@@ -673,7 +639,7 @@ def main() -> int:
     print("書式設定完了")
 
     # --- 4) 条件付き書式 ---
-    # 既存のアラート用ルール (旧「在庫警告」1列分 / 前回の3列分) を消して張り直す。
+    # 既存のアラート用ルール (旧「在庫警告」1列分 / 旧3列分) を消して張り直す。
     existing = cf_ranges(sp, sheet_id)
     ours_texts = set(LEGACY_MATCH_TEXTS)
     for key in COLUMN_ORDER:
@@ -702,8 +668,8 @@ def main() -> int:
         print(f"既存のアラート用ルール {len(del_reqs)}件を削除しました")
 
     # 判定文字列は絵文字を含めない (日本語部分で一致させる)。
-    # 数量が埋め込まれるので TEXT_CONTAINS では「🚚 5個送る」と
-    # 「🔥 急いで5個送る」を区別できない。除外語つきの CUSTOM_FORMULA を使う。
+    # 「✓ 済 8/1」のように日付が埋め込まれるため TEXT_CONTAINS では書きづらい。
+    # 除外語も指定できる CUSTOM_FORMULA で統一する。
     def match_formula(col: str, match: str, exclude: tuple) -> str:
         cond = f'ISNUMBER(SEARCH("{match}",${col}2))'
         for x in exclude:
@@ -711,7 +677,7 @@ def main() -> int:
         return f"=AND({cond})"
 
     rules = []
-    # 3列共通 (対応済み) を先に置く → 同じセルに複数一致したとき先勝ち
+    # 対応済み (✓済 / ⚠未着) を先に置く → 同じセルに複数一致したとき先勝ち
     for match, color in ((M_OVERDUE, "red"), (M_DONE, "grey")):
         ranges = [col_range(anchor + i) for i in range(len(COLUMN_ORDER))]
         formulas = [match_formula(cols[key], match, ()) for key in COLUMN_ORDER]
@@ -741,7 +707,7 @@ def main() -> int:
     sheets_retry(sp.batch_update, {"requests": cf_reqs})
     print(f"条件付き書式 {len(cf_reqs)}件を設定しました")
 
-    print("✅ 梱包 / 販売調整 / 発注 / 対応済み の4列 設定完了")
+    print("✅ 販売調整 / 対応済み / 調整の目安 の設定完了")
     return 0
 
 

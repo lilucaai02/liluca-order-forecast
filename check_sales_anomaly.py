@@ -26,12 +26,14 @@
                        (最優先。冒頭に出す)
     🛑 在庫切れ        FBA在庫0 / 総在庫0 / FBA在庫切れ予測日が今日以前
     ⚠️ 危険(在庫僅少)  FBA残り日数が1〜15日
-    📦 梱包            シート側「梱包」列   (❌欠品中 / 🔥急いで◯個送る / 🚚◯個送る)
+    📦 梱包            「FBA梱包必要数」が0より大きい商品
     🔽 販売調整        シート側「販売調整」列 (🛑セール全停止 / 🔽セール減らす)
-    🏭 発注            シート側「発注」列   (🏭至急◯個発注 / 🏭◯個発注)
+    🏭 発注            「発注中個数」が「発注個数予測」に足りていない商品
     📦 要発注(至急)    総数発注残り日数が ✖️ またはマイナス (上の発注に出た分は除く)
     📦 要発注(30日以内) 総数発注残り日数が0〜30日
     【発注済み・様子見】上の要発注のうち 発注中個数 ≧ 発注個数予測 のもの
+  梱包・発注はシートに専用の文言列を持たない (2026-07-31 に「梱包」「発注」列を
+  削除)。必要総量そのものである既存の数値列から通知側で組み立てる。
   「対応済み」列に日付を入れた商品 (✓ 済) は通知から丸ごと除外する。
   梱包・発送して入庫見込みが立っているのにアラートが出続けるのを止めるため。
   20日を過ぎても在庫が戻らなければ「⚠ 未着」として先頭に復活する。
@@ -101,6 +103,7 @@ from stock_alert_labels import (
     K_DONE,
     K_OVERDUE,
     LEGACY_ALERT_HEADER,
+    SECTION_ORDER,
     SECTION_TITLES,
     classify,
 )
@@ -126,7 +129,8 @@ DASHBOARD_TAB = "ダッシュボード２"
 # ヘッダーは改行を含むものがあるため、1行目だけを見て前方一致で照合する。
 DH_ORDER_DAYS = "総数発注残り日数"
 DH_DAYS = "FBA残り日数"
-# 梱包 / 販売調整 / 発注 / 対応済み (2026-07-31 に「在庫警告」1列を分割)
+# シート側に文言が入るアラート列 (現行は「販売調整」だけ)。
+# ✓済 / ⚠未着 もこの列に出る。
 DH_ACT = {key: COLUMN_SPECS[key][0] for key in COLUMN_ORDER}
 DH_DONE = H_DONE
 DH_HINT = "調整の目安"
@@ -138,6 +142,7 @@ DH_RSL_STOCK = "RSL在庫数"
 DH_SC_STOCK = "ストッククルー在庫数"
 DH_ORDER_QTY = "発注個数予測"
 DH_ORDERING = "発注中個数"
+DH_PACK_NEED = "FBA梱包必要数"    # 📦 梱包セクションの出典 (旧「梱包」列の代わり)
 DH_LEAD_TIME = "リードタイム"
 # 「総在庫」はヘッダーが空欄の列。総数発注予測日 と 平日販売数合計 の間にある。
 
@@ -621,7 +626,8 @@ class DashRow:
     """ダッシュボード２の1行 (1商品)。"""
     __slots__ = ("name", "order_days", "order_days_text", "fba_days",
                  "acts", "done_date", "hint", "fba_out_date", "order_date",
-                 "total", "fba", "rsl", "sc", "order_qty", "ordering", "lead")
+                 "total", "fba", "rsl", "sc", "order_qty", "ordering",
+                 "pack_need", "lead")
 
     def __init__(self, **kw):
         for k in self.__slots__:
@@ -630,7 +636,7 @@ class DashRow:
             self.acts = {}
 
     def act(self, key: str) -> str:
-        """梱包 / 販売調整 / 発注 のセル文字列 (空欄なら "")。"""
+        """アラート列 (販売調整) のセル文字列 (空欄なら "")。"""
         return self.acts.get(key, "")
 
     def sev(self, key: str) -> int:
@@ -641,13 +647,29 @@ class DashRow:
 
     @property
     def is_done(self) -> bool:
-        """✓ 済 = 対応済みで有効期間内。通知から丸ごと除外する。"""
-        return any(self._key_of(k) == K_DONE for k in COLUMN_ORDER)
+        """✓ 済 = 対応済みで有効期間内。通知から丸ごと除外する。
+
+        シート側の数式は「対応済み」に日付があれば、アラート条件に
+        当てはまっていなくても ✓ 済 を出す。読めなかったときの保険として
+        経過日数からも判定する (シートの数式と同じ条件)。
+        """
+        if any(self._key_of(k) == K_DONE for k in COLUMN_ORDER):
+            return True
+        return self.elapsed is not None and self.elapsed <= DONE_VALID_DAYS
 
     @property
     def is_overdue(self) -> bool:
-        """⚠ 未着 = 対応したはずなのに在庫が戻っていない。最優先で通知する。"""
-        return any(self._key_of(k) == K_OVERDUE for k in COLUMN_ORDER)
+        """⚠ 未着 = 対応したはずなのに在庫が戻っていない。最優先で通知する。
+
+        シート側は「販売調整」列にしか ⚠ 未着 を出せない (梱包・発注の
+        文言列を廃止したため)。梱包・発注だけが残っている商品も拾えるよう、
+        経過日数 + まだ何か必要な状態か、でも判定する。
+        """
+        if any(self._key_of(k) == K_OVERDUE for k in COLUMN_ORDER):
+            return True
+        if self.elapsed is None or self.elapsed <= DONE_VALID_DAYS:
+            return False
+        return bool(self.act("sale")) or self.need_pack or self.need_order
 
     @property
     def elapsed(self) -> Optional[int]:
@@ -664,6 +686,29 @@ class DashRow:
         return self.total - (self.fba or 0) - (self.rsl or 0) - (self.sc or 0)
 
     @property
+    def need_pack(self) -> bool:
+        """📦 梱包が必要 = FBA梱包必要数 > 0。
+
+        旧「梱包」列は MIN(手元在庫, FBA梱包必要数) = 手元にある分だけを
+        出していて、隣の FBA梱包必要数 と数字が食い違い紛らわしかったため、
+        必要総量そのものである FBA梱包必要数 をそのまま使う。
+        """
+        return isinstance(self.pack_need, (int, float)) and self.pack_need > 0
+
+    @property
+    def order_short(self) -> Optional[float]:
+        """発注個数予測 − 発注中個数 (不足分)。足りていれば None。"""
+        if not isinstance(self.order_qty, (int, float)):
+            return None
+        on = self.ordering if isinstance(self.ordering, (int, float)) else 0.0
+        return self.order_qty - on if on < self.order_qty else None
+
+    @property
+    def need_order(self) -> bool:
+        """🏭 発注が必要 = 発注中個数 < 発注個数予測。"""
+        return self.order_short is not None
+
+    @property
     def days_key(self) -> float:
         return (self.fba_days if isinstance(self.fba_days, (int, float))
                 else 99999.0)
@@ -672,6 +717,13 @@ class DashRow:
     def order_days_key(self) -> float:
         return (self.order_days if isinstance(self.order_days, (int, float))
                 else -99999.0)   # ✖️ は最優先
+
+    @property
+    def order_days_disp(self) -> str:
+        """総数発注残り日数の表示 (✖️ などの文字列もそのまま出す)。"""
+        if isinstance(self.order_days, (int, float)):
+            return f"{self.order_days:,.0f}日"
+        return self.order_days_text or "-"
 
 
 def num(v, unit: str = "") -> str:
@@ -689,6 +741,10 @@ class Dashboard:
       1. ✓ 済 の行は最初に除外する (対応済み = 入庫待ち。通知しない)
       2. ⚠ 未着 の行は「最優先」セクションだけに載せる (他には出さない)
       3. 残りを 在庫切れ / 危険 / 梱包 / 販売調整 / 発注 / 要発注 に振り分ける
+
+    梱包・発注はシートの文言列ではなく既存の数値列から判定する:
+      梱包 = FBA梱包必要数 > 0
+      発注 = 発注中個数 < 発注個数予測
     """
 
     __slots__ = ("rows", "url", "done", "overdue", "out_of_stock", "danger",
@@ -730,10 +786,24 @@ class Dashboard:
         # 在庫切れ・危険と重複してもよい。あちらは「状況」、こちらは「誰が何を
         # するか」で、倉庫担当が自分の行だけを見られることを優先する。
         self.acts: Dict[str, List[DashRow]] = {}
-        for key in COLUMN_ORDER:
-            items = [r for r in live if r.act(key)]
-            items.sort(key=lambda r: (r.sev(key), r.days_key, r.name))
-            self.acts[key] = items
+
+        # 📦 梱包: FBA梱包必要数 (シートの数値列) が0より大きいもの。
+        #          FBA残り日数が少ない順 = 送るのが急ぐ順に並べる。
+        pack = [r for r in live if r.need_pack]
+        pack.sort(key=lambda r: (r.days_key, r.name))
+        self.acts["pack"] = pack
+
+        # 🔽 販売調整: シート側「販売調整」列の文言から (全停止 → 減らす の順)
+        sale = [r for r in live if r.act("sale")]
+        sale.sort(key=lambda r: (r.sev("sale"), r.days_key, r.name))
+        self.acts["sale"] = sale
+
+        # 🏭 発注: 発注中個数が発注個数予測に足りていないもの。
+        #          総数発注残り日数が少ない順 (✖️ が先頭)。
+        order = [r for r in live if r.need_order]
+        order.sort(key=lambda r: (r.order_days_key, r.name))
+        self.acts["order"] = order
+
         ordered = {r.name for r in self.acts["order"]}
 
         # --- 📦 要発注 (リードタイム基準。上の「発注」に出た商品は除く) ---
@@ -766,7 +836,7 @@ class Dashboard:
 
     @property
     def n_acts(self) -> int:
-        return sum(len(v) for v in self.acts.values())
+        return sum(len(self.acts[k]) for k in SECTION_ORDER)
 
     @property
     def total_items(self) -> int:
@@ -797,7 +867,8 @@ def scan_dashboard(sp, today: datetime.date) -> Tuple[Optional[Dashboard], List[
               ("fba_out", DH_FBA_OUT_DATE), ("order_date", DH_ORDER_DATE),
               ("fba", DH_FBA_STOCK), ("rsl", DH_RSL_STOCK),
               ("sc", DH_SC_STOCK), ("order_qty", DH_ORDER_QTY),
-              ("ordering", DH_ORDERING), ("lead", DH_LEAD_TIME)]
+              ("ordering", DH_ORDERING), ("pack_need", DH_PACK_NEED),
+              ("lead", DH_LEAD_TIME)]
     wanted += [(key, DH_ACT[key]) for key in COLUMN_ORDER]
     for key, name in wanted:
         i = find_col(header, name)
@@ -856,6 +927,7 @@ def scan_dashboard(sp, today: datetime.date) -> Tuple[Optional[Dashboard], List[
             sc=to_number(val(row, "sc")),
             order_qty=to_number(val(row, "order_qty")),
             ordering=to_number(val(row, "ordering")),
+            pack_need=to_number(val(row, "pack_need")),
             lead=to_number(val(row, "lead")),
         ))
 
@@ -909,11 +981,20 @@ def format_stock_alerts(dash: Optional[Dashboard]) -> List[str]:
     sec("⚠️ 危険 (在庫僅少)", dash.danger, lambda r: [
         f"  {r.name:<20} 残{num(r.fba_days):>5}日 / FBA{num(r.fba):>7}",
         f"      {r.hint}" if r.hint else ""])
-    for key in COLUMN_ORDER:
-        sec(SECTION_TITLES[key], dash.acts[key], lambda r, k=key: [
-            f"  {r.name:<20} {r.act(k):<18} 残{num(r.fba_days):>5}日 / "
-            f"FBA{num(r.fba):>7} / 手元{num(r.hand):>7}",
-            f"      {r.hint}" if k == COLUMN_ORDER[0] and r.hint else ""])
+    # 📦 梱包: FBA梱包必要数 (シートAB列) が0より大きい商品
+    sec(SECTION_TITLES["pack"], dash.acts["pack"], lambda r: [
+        f"  {r.name:<20} 梱包必要{num(r.pack_need):>7} / "
+        f"手元{num(r.hand):>7} / 残{num(r.fba_days):>5}日"])
+    # 🔽 販売調整: シート側「販売調整」列の文言
+    sec(SECTION_TITLES["sale"], dash.acts["sale"], lambda r: [
+        f"  {r.name:<20} {r.act('sale'):<18} 残{num(r.fba_days):>5}日 / "
+        f"FBA{num(r.fba):>7} / 手元{num(r.hand):>7}",
+        f"      {r.hint}" if r.hint else ""])
+    # 🏭 発注: 発注中個数 < 発注個数予測 の商品
+    sec(SECTION_TITLES["order"], dash.acts["order"], lambda r: [
+        f"  {r.name:<20} 発注予測{num(r.order_qty):>7} / "
+        f"発注中{num(r.ordering):>7} / あと{r.order_days_disp:>7} / "
+        f"LT{num(r.lead):>5}日"])
     sec("📦 要発注 (至急)", dash.order_urgent, lambda r: [
         f"  {r.name:<20} 発注予測日 {dstr(r.order_date):<12} "
         f"発注{num(r.order_qty):>8} / 発注中{num(r.ordering):>8} / "
@@ -1046,15 +1127,18 @@ def format_chatwork_stock(dash: Dashboard, today: datetime.date,
         f"     {r.hint}" if r.hint else ""])
 
     # 担当別の「やること」。状況セクションと重複してよい (見る人が違う)
+    # 梱包・発注はシートの「FBA梱包必要数」「発注個数予測 / 発注中個数」を
+    # そのまま出す (シート側の数字と食い違わないようにするため)
     _section(out, SECTION_TITLES["pack"], dash.acts["pack"], lambda r: [
-        f"  ・{r.name} {r.act('pack')}（残{num(r.fba_days)}日 / "
-        f"手元{num(r.hand)}）"])
+        f"  ・{r.name} 梱包{num(r.pack_need)}個（手元{num(r.hand)} / "
+        f"残{num(r.fba_days)}日）"])
     _section(out, SECTION_TITLES["sale"], dash.acts["sale"], lambda r: [
         f"  ・{r.name} {r.act('sale')}（残{num(r.fba_days)}日 / "
-        f"FBA{num(r.fba)} / 手元{num(r.hand)}）"])
+        f"FBA{num(r.fba)} / 手元{num(r.hand)}）",
+        f"     {r.hint}" if r.hint else ""])
     _section(out, SECTION_TITLES["order"], dash.acts["order"], lambda r: [
-        f"  ・{r.name} {r.act('order')}（残{num(r.fba_days)}日 / "
-        f"発注中{num(r.ordering)} / LT{num(r.lead)}日）"])
+        f"  ・{r.name} 発注{num(r.order_qty)}個（発注中{num(r.ordering)} / "
+        f"あと{r.order_days_disp} / LT{num(r.lead)}日）"])
 
     _section(out, "📦 要発注（至急・上記以外）", dash.order_urgent, lambda r: [
         f"  ・{r.name} 発注予測日{dstr(r.order_date)} / "
