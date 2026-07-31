@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ダッシュボード２に「在庫警告」「調整の目安」2列を追加する。
+"""ダッシュボード２に「梱包」「販売調整」「発注」「対応済み」「調整の目安」を作る。
 
 運用ルール (ユーザーの前提):
   在庫が30日分になった時点で補充が到着している想定で回している。
@@ -7,33 +7,52 @@
   時点で入庫していない = 供給が間に合っていない、というサイン。
   1ヶ月の猶予があればセールを調整して在庫を延ばせるので、
   30日を切った時点でアラートを出して判断材料にする。
-  (入庫の見込みが立っていれば無視してよい。あくまで判断材料)
 
---- 在庫警告 (1列目) ---
-使う値:
-  在庫日数   = FBA残り日数            (C列)
-  手元在庫   = 総在庫 - FBA - RSL - SC (= 荒瀬 + 事務所 + 中国 + 移動中)
-  発注中     = 発注中個数
-  梱包必要数 = FBA梱包必要数
+--- 2026-07-31 の変更 (1列 → 4列) ---
+以前は「在庫警告」1列に 梱包・セール調整・発注 が混在していて、
+担当者が自分に関係する行を探せなかった。そこで担当別に3列へ分割した。
+    梱包     (G) … 倉庫担当  : 手元在庫を送れば解決する分
+    販売調整 (H) … 販促担当  : 送っても足りない分は売る量を絞る
+    発注     (I) … 仕入担当  : 工場に頼む分
+    対応済み (J) … ユーザーが対応日を手入力する欄 (数式なし)
+    調整の目安(K) … 従来どおり
 
-判定 (上から順に評価。2026-07-31 の変更では条件は一切いじらず表示文言だけ差し替えた):
-  在庫日数が数値でない or 30より大きい       → ""            (アラートなし)
-  在庫日数 <= 0                             → ❌ 欠品中       (赤)
-  手元在庫 >= 梱包必要数 かつ 在庫日数 <= 15 → 🔥 急いで梱包   (橙 / 自力で解決できる)
-  手元在庫 >= 梱包必要数                     → 🚚 梱包する     (黄)
-  発注中 > 0 かつ 在庫日数 <= 15            → 🛑 セール全停止 (赤)
-  発注中 > 0                                → 🔽 セール減らす (橙)
-  上記以外 (手元も発注中もなし)              → 🏭 すぐ発注     (赤)
+重要: 3列は「それぞれ独立に」判定する。
+  以前は上から順に評価して1つしか出せなかったが、実際には
+  「手元の分は送る」+「足りない分はセールも絞る」+「不足分は発注する」が
+  同時に起きる。同時に複数列へ出るのが正常。
 
-  アイコンで「何をするか」、背景色で「いつまでに」を表す。
-  🏭 = 工場に頼む / 🚚 🔥 = 自分で動かす / 🛑 🔽 = 売る量を絞る。
-  文言と色の対応は stock_alert_labels.py に集約している。
+判定 (在庫日数 = FBA残り日数 C列 / 手元在庫 = 総在庫 - FBA - RSL - SC):
+  3列共通の前提: 在庫日数が数値でない or 30より大きい → 3列とも空欄
+
+  [G 梱包]
+    在庫日数 <= 0                        → ❌ 欠品中          (赤)
+    手元在庫 <= 0 or 梱包必要数 <= 0     → (空欄)
+    在庫日数 <= 15                       → 🔥 急いで◯個送る   (橙)
+    それ以外                             → 🚚 ◯個送る         (黄)
+      ◯ = MIN(手元在庫, FBA梱包必要数) の整数
+
+  [H 販売調整]  手元在庫 < FBA梱包必要数 のときだけ (= 梱包しても足りない)
+    在庫日数 <= 15                       → 🛑 セール全停止    (赤)
+    それ以外                             → 🔽 セール減らす    (橙)
+
+  [I 発注]      発注中個数 < 発注個数予測 のときだけ
+    総数発注残り日数が ✖️ or マイナス    → 🏭 至急◯個発注     (赤)
+    それ以外                             → 🏭 ◯個発注         (橙)
+      ◯ = 発注個数予測 - 発注中個数 の整数
+
+  [J 対応済み] に日付が入っていたら、上の判定より優先して3列とも:
+    経過 <= DONE_VALID_DAYS 日           → ✓ 済 M/d           (灰)
+    それを過ぎてもまだアラート条件のまま → ⚠ 未着 ◯日経過     (赤)
+    (アラート条件から外れていれば空欄。= 入庫して解決した)
+  これで「梱包・発送して入庫見込みがあるのにアラートが出続ける」を止める。
 
   C列は "✖️" や "−" の文字列になることがあるため ISNUMBER で弾く。
   全体を IFERROR でラップし、エラー時は空欄。
+  文言・色・日数の定数は stock_alert_labels.py に集約している。
 
---- 調整の目安 (2列目) ---
-在庫警告が空欄でない商品にのみ表示:
+--- 調整の目安 ---
+3列のいずれかが空欄でない商品にのみ表示:
   「このまま◯日 ／ 停止で◯日 ／ 14日持たせるには◯個/日」
 
   このまま◯日 = FBA残り日数 (C列) …… 何もしなければ在庫が尽きるまでの日数
@@ -44,15 +63,13 @@
     抑制ペースが0以下なら「停止で在庫維持可」
   14日持たせるには◯個/日 = FBA在庫数 ÷ 14 (小数第1位)
     目標日数は stock_alert_labels.HINT_TARGET_DAYS の1箇所で定義。
-    以前は60日だったが、30日で警告が出る運用では警告時点の在庫が
-    30日分しかなく60日は物理的に持たないため、意味のない数字だった。
 
 参照行は商品タブのA列ラベルで特定する (config の行番号は当てにしない)。
 
 使い方:
   python3 dashboard_stock_alert_columns.py --dry-run
-  python3 dashboard_stock_alert_columns.py
-  python3 dashboard_stock_alert_columns.py --formulas-only  # 列挿入済みの再設定用
+  python3 dashboard_stock_alert_columns.py            # 未移行なら列挿入から
+  python3 dashboard_stock_alert_columns.py --formulas-only  # 移行済みの再設定用
 """
 
 from __future__ import annotations
@@ -69,27 +86,34 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src
 from config.settings import Settings
 from fetch_safety import sheets_retry
 from stock_alert_labels import (
-    ALERT_SPECS,
-    A_OUT_OF_STOCK,
-    A_ORDER_NOW,
-    A_PACK,
-    A_PACK_URGENT,
-    A_SALE_REDUCE,
-    A_SALE_STOP,
+    CF_COLORS,
+    COLUMN_ORDER,
+    COLUMN_SPECS,
+    DAYS_ALERT,
+    DAYS_URGENT,
+    DONE_DATE_FORMAT,
+    DONE_HEADER_NOTE,
+    DONE_INPUT_BG,
+    DONE_VALID_DAYS,
     HINT_TARGET_DAYS,
+    H_DONE,
+    H_HINT,
+    LEGACY_ALERT_HEADER,
     LEGACY_MATCH_TEXTS,
+    M_DONE,
+    M_OVERDUE,
+    NEW_HEADERS,
 )
 
 DEST_ID = "1MzyWaqefWZvHcR4nHSrfzgwXaBA4oe-E9MlfhNjZTAU"
 DASH = "ダッシュボード２"
 
-# 挿入位置の基準となる既存ヘッダー (この列の直後に2列挿入)
-ANCHOR_HEADER = "総数残り日数"
-
-NEW_HEADERS = ["在庫警告", "調整の目安"]
-N_NEW = len(NEW_HEADERS)
+# 新設する4列 (梱包 / 販売調整 / 発注 / 対応済み)。調整の目安はこの右に残る。
+N_NEW = len(NEW_HEADERS)          # = 4
+N_INSERT = N_NEW - 1              # 旧「在庫警告」列を1列目に流用するので3列だけ挿入
 
 # 判定・表示に使う既存ヘッダー (実際の列位置はヘッダー文字列から解決する)
+H_ORDER_DAYS = "総数発注残り日数"
 H_DAYS = "FBA残り日数"
 H_FBA_DATE = "FBA在庫切れ予測日"      # 参照タブ/行の解決に使う
 H_TOTAL_STOCK = ""                    # 総在庫 (ヘッダーが空欄の列)
@@ -97,17 +121,14 @@ H_FBA = "FBA在庫数"
 H_RSL = "RSL在庫数"
 H_SC = "ストッククルー在庫数"
 H_ORDERING = "発注中個数"
-H_PACK = "FBA梱包必要数"
+H_ORDER_QTY = "発注個数予測"
+H_PACK_NEED = "FBA梱包必要数"
 
 # 商品タブ側のA列ラベル
 L_STOCK_FORECAST = "在庫予想"          # FBA在庫切れ予測日が参照している行
 L_AMAZON_SALES = "amazonFBA販売実績"
 L_WEEKDAY_AVG = "直近7平日セール以外平均"
 L_WEIGHTED_AVG = "直近セール以外加重平均"
-
-DAYS_ALERT = 30    # これ以下でアラート開始 (補充が届いているはずの水準)
-DAYS_URGENT = 15   # これ以下は至急
-# 「◯日持たせるには」の目標日数は stock_alert_labels.HINT_TARGET_DAYS (=14)
 
 REF_RE = re.compile(r"'([^']+)'!\$(\d+):\$(\d+)")
 
@@ -119,14 +140,9 @@ BLACK = {"red": 0, "green": 0, "blue": 0}
 # データ行は白地。隣接列の背景を引き継がせず、条件付き書式の色を素直に見せる
 DATA_BG = WHITE
 
-# 条件付き書式の背景色 (Google 標準の淡色)
-CF_RED = {"red": 0.95686275, "green": 0.8, "blue": 0.8}          # #f4cccc
-CF_ORANGE = {"red": 0.9882353, "green": 0.8980392, "blue": 0.8039216}  # #fce5cd
-CF_YELLOW = {"red": 1, "green": 0.9490196, "blue": 0.8}          # #fff2cc
-CF_COLORS = {"red": CF_RED, "orange": CF_ORANGE, "yellow": CF_YELLOW}
-
-COL_WIDTH_ALERT = 130
-COL_WIDTH_HINT = 250
+COL_WIDTH_ACT = 140    # 梱包 / 販売調整 / 発注
+COL_WIDTH_DONE = 80    # 対応済み
+COL_WIDTH_HINT = 250   # 調整の目安
 
 
 def a1col(n: int) -> str:
@@ -169,8 +185,8 @@ def shift_relative_cols(formula: str, delta: int) -> str:
 
     CF の数式は「範囲の左上セル」を基準にした相対参照として解釈される。
     範囲の開始列を動かしたら、$ の付いていない列参照も同じだけ動かさないと
-    別の列を指してしまう (今回 G2:G62 → I2:I62 に戻したとき、自分自身を指す
-    はずの G2 が2列左 = 新設した在庫警告列を指してしまった)。
+    別の列を指してしまう (過去に G2:G62 → I2:I62 と戻したとき、自分自身を
+    指すはずの G2 が2列左 = 新設した列を指してしまう事故があった)。
     """
     if not delta:
         return formula
@@ -262,25 +278,82 @@ def resolve_avg_rows(labels: list[str], base: int) -> tuple[int | None, int | No
     return wk7, wavg
 
 
-def build_alert_formula(cols: dict, r: int) -> str:
-    """在庫警告の数式。cols は挿入後の列文字 (例 {"days": "C", ...})。"""
+# ---------------------------------------------------------------------------
+# 数式
+# ---------------------------------------------------------------------------
+
+def refs(cols: dict, r: int) -> dict:
+    """行 r の参照式をまとめて作る。"""
     days = f"${cols['days']}{r}"
-    hand = (f"N(${cols['total']}{r})-N(${cols['fba']}{r})"
-            f"-N(${cols['rsl']}{r})-N(${cols['sc']}{r})")
-    pack = f"N(${cols['pack']}{r})"
-    order = f"N(${cols['ordering']}{r})"
-    # 条件式は 2026-07-31 の変更でも一切いじっていない (表示文言のみ差し替え)
+    hand = (f"(N(${cols['total']}{r})-N(${cols['fba']}{r})"
+            f"-N(${cols['rsl']}{r})-N(${cols['sc']}{r}))")
+    return {
+        "days": days,
+        "hand": hand,
+        "need": f"N(${cols['need']}{r})",
+        "ordering": f"N(${cols['ordering']}{r})",
+        "order_qty": f"N(${cols['order_qty']}{r})",
+        "order_days": f"${cols['order_days']}{r}",
+        "done": f"${cols['done']}{r}",
+    }
+
+
+def base_pack(x: dict) -> str:
+    """G列「梱包」の素の判定 (対応済みを考慮しない)。"""
+    send = f'TEXT(INT(MIN({x["hand"]},{x["need"]})),"0")'
     return (
-        f'=IFERROR('
-        f'IF(NOT(ISNUMBER({days})),"",'
-        f'IF({days}>{DAYS_ALERT},"",'
-        f'IF({days}<=0,"{A_OUT_OF_STOCK}",'
-        f'IF(AND({hand}>={pack},{days}<={DAYS_URGENT}),"{A_PACK_URGENT}",'
-        f'IF({hand}>={pack},"{A_PACK}",'
-        f'IF(AND({order}>0,{days}<={DAYS_URGENT}),"{A_SALE_STOP}",'
-        f'IF({order}>0,"{A_SALE_REDUCE}",'
-        f'"{A_ORDER_NOW}")))))))'
-        f',"")')
+        f'IF({x["days"]}<=0,"❌ 欠品中",'
+        f'IF(OR({x["hand"]}<=0,{x["need"]}<=0),"",'
+        f'IF({x["days"]}<={DAYS_URGENT},"🔥 急いで"&{send}&"個送る",'
+        f'"🚚 "&{send}&"個送る")))')
+
+
+def base_sale(x: dict) -> str:
+    """H列「販売調整」の素の判定。梱包しても足りないときだけ出す。"""
+    return (
+        f'IF({x["hand"]}<{x["need"]},'
+        f'IF({x["days"]}<={DAYS_URGENT},"🛑 セール全停止","🔽 セール減らす"),"")')
+
+
+def base_order(x: dict) -> str:
+    """I列「発注」の素の判定。発注中が発注個数予測に足りないときだけ出す。
+
+    「至急」は総数発注残り日数が ✖️ (数値でない文字列) かマイナスのとき。
+    空欄は「まだ算出できていない」だけなので至急にはしない。
+    """
+    short = f'TEXT(INT({x["order_qty"]}-{x["ordering"]}),"0")'
+    od = x["order_days"]
+    urgent = (f'OR(AND(ISNUMBER({od}),{od}<0),'
+              f'AND(NOT(ISNUMBER({od})),{od}<>""))')
+    return (
+        f'IF({x["ordering"]}<{x["order_qty"]},'
+        f'IF({urgent},"🏭 至急"&{short}&"個発注","🏭 "&{short}&"個発注"),"")')
+
+
+BASE_BUILDERS = {"pack": base_pack, "sale": base_sale, "order": base_order}
+
+
+def build_alert_formula(col_key: str, cols: dict, r: int) -> str:
+    """梱包 / 販売調整 / 発注 いずれか1列の数式。
+
+    構造:
+      IFERROR(LET(base, <素の判定>,
+        対応済みに日付あり → 済 / 未着 (base が残っているときだけ未着)
+        なければ base), "")
+    """
+    x = refs(cols, r)
+    gate = (f'IF(NOT(ISNUMBER({x["days"]})),"",'
+            f'IF({x["days"]}>{DAYS_ALERT},"",'
+            f'{BASE_BUILDERS[col_key](x)}))')
+    done = x["done"]
+    elapsed = f'(TODAY()-{done})'
+    return (
+        f'=IFERROR(LET(base,{gate},'
+        f'IF(ISNUMBER({done}),'
+        f'IF({elapsed}<={DONE_VALID_DAYS},'
+        f'"✓ {M_DONE} "&TEXT({done},"{DONE_DATE_FORMAT}"),'
+        f'IF(base="","","⚠ {M_OVERDUE} "&TEXT({elapsed},"0")&"日経過")),'
+        f'base)),"")')
 
 
 def build_hint_formula(cols: dict, r: int, tab: str, wk7: int, wavg: int) -> str:
@@ -290,6 +363,7 @@ def build_hint_formula(cols: dict, r: int, tab: str, wk7: int, wavg: int) -> str
       このまま = FBA残り日数 (C列) をそのまま
       停止で   = FBA在庫数 ÷ 抑制ペース (切り捨て)
       14日     = HINT_TARGET_DAYS
+    3列 (梱包/販売調整/発注) がすべて空欄の行には出さない。
     """
     t = f"'{tab}'"
 
@@ -299,15 +373,17 @@ def build_hint_formula(cols: dict, r: int, tab: str, wk7: int, wavg: int) -> str
     pace = f"MAX({at(wk7)},{at(wavg)})"
     fba = f"N(${cols['fba']}{r})"
     days = f"${cols['days']}{r}"
-    alert = f"${cols['alert']}{r}"
+    empty = "AND(" + ",".join(f'${cols[k]}{r}=""' for k in COLUMN_ORDER) + ")"
     return (
-        f'=IFERROR(IF({alert}="","",'
+        f'=IFERROR(IF({empty},"",'
         f'"このまま"&TEXT(ROUND({days},0),"0")&"日 ／ "&'
         f'IF({pace}<=0,"停止で在庫維持可",'
         f'"停止で"&ROUNDDOWN({fba}/{pace},0)&"日")'
         f'&" ／ {HINT_TARGET_DAYS}日持たせるには"'
         f'&TEXT(ROUND({fba}/{HINT_TARGET_DAYS},1),"0.0")&"個/日"),"")')
 
+
+# ---------------------------------------------------------------------------
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -336,45 +412,77 @@ def main() -> int:
     for i, h in enumerate(header):
         print(f"  {a1col(i+1)}: {h!r}")
 
-    if ANCHOR_HEADER not in header:
-        print(f"ヘッダー {ANCHOR_HEADER!r} が見つかりません", file=sys.stderr)
-        return 1
-    already = [h for h in NEW_HEADERS if h in header]
-    if already and not args.formulas_only:
-        print(f"既に {already} が存在します。--formulas-only を使ってください",
+    migrated = NEW_HEADERS[0] in header
+    if migrated:
+        anchor = header.index(NEW_HEADERS[0])
+        missing = [h for h in NEW_HEADERS if h not in header]
+        if missing:
+            print(f"移行が中途半端です (欠けている列: {missing})。"
+                  f"手で戻してから再実行してください", file=sys.stderr)
+            return 1
+        args.formulas_only = True
+        print(f"\n移行済みと判断しました ({NEW_HEADERS[0]}={a1col(anchor+1)}列)。"
+              f"数式と書式のみ再設定します")
+    elif LEGACY_ALERT_HEADER in header:
+        anchor = header.index(LEGACY_ALERT_HEADER)
+        print(f"\n旧「{LEGACY_ALERT_HEADER}」列 = {a1col(anchor+1)}。"
+              f"この列を「{NEW_HEADERS[0]}」に置き換え、直後に{N_INSERT}列挿入します")
+    else:
+        print(f"「{LEGACY_ALERT_HEADER}」も「{NEW_HEADERS[0]}」も見つかりません",
               file=sys.stderr)
         return 1
 
-    if args.formulas_only:
-        # 既に挿入済み: 新列の実位置をヘッダーから引く
-        insert_at = header.index(NEW_HEADERS[0])
-    else:
-        insert_at = header.index(ANCHOR_HEADER) + 1   # 0-based 挿入位置
+    if H_HINT not in header:
+        print(f"ヘッダー {H_HINT!r} が見つかりません", file=sys.stderr)
+        return 1
+
+    # 挿入は「1列目 (=旧在庫警告 / 梱包)」の直後。1列目はその場で作り替える。
+    insert_at = anchor + 1
+    shift = 0 if args.formulas_only else N_INSERT
+
+    def hindex(name: str) -> int:
+        """ヘッダー文字列 → 列インデックス。
+
+        '発注個数予測\\n(...)' のように改行で補足が付くヘッダーがあるので、
+        完全一致 → 1行目の一致 → 前方一致 の順に探す。
+        """
+        if name in header:
+            return header.index(name)
+        for i, h in enumerate(header):
+            if str(h).split("\n")[0].strip() == name:
+                return i
+        for i, h in enumerate(header):
+            if h and str(h).startswith(name):
+                return i
+        raise ValueError(f"ヘッダー {name!r} が見つかりません")
 
     def newcol(name: str) -> str:
-        """挿入後の列文字を返す (挿入位置以降は N_NEW 個ずれる)。"""
-        i0 = header.index(name)
-        if args.formulas_only:
-            return a1col(i0 + 1)
-        return a1col(i0 + 1 + (N_NEW if i0 >= insert_at else 0))
+        """挿入後の列文字を返す (挿入位置以降は shift 個ずれる)。"""
+        i0 = hindex(name)
+        return a1col(i0 + 1 + (shift if i0 >= insert_at else 0))
 
     cols = {
+        "order_days": newcol(H_ORDER_DAYS),
         "days": newcol(H_DAYS),
         "total": newcol(H_TOTAL_STOCK),
         "fba": newcol(H_FBA),
         "rsl": newcol(H_RSL),
         "sc": newcol(H_SC),
         "ordering": newcol(H_ORDERING),
-        "pack": newcol(H_PACK),
-        "alert": a1col(insert_at + 1),
-        "hint": a1col(insert_at + 2),
+        "order_qty": newcol(H_ORDER_QTY),
+        "need": newcol(H_PACK_NEED),
+        "hint": newcol(H_HINT),
     }
+    for i, key in enumerate(COLUMN_ORDER):
+        cols[key] = a1col(anchor + 1 + i)
+    cols["done"] = a1col(anchor + 1 + len(COLUMN_ORDER))
+
     print("\n=== 挿入後の参照列 ===")
     for k, v in cols.items():
-        print(f"  {k:9s}: {v}")
+        print(f"  {k:10s}: {v}")
 
     # --- 参照タブ / 平均行の解決 ---
-    fba_date_idx0 = header.index(H_FBA_DATE)
+    fba_date_idx0 = hindex(H_FBA_DATE)
     label_cache: dict[str, list[str]] = {}
 
     def labels(tab: str) -> list[str]:
@@ -409,18 +517,13 @@ def main() -> int:
                       "base": base, "wk7": wk7, "wavg": wavg})
 
     print(f"\n=== 対象 {len(plans)}行 ===")
-    for p in plans:
-        print(f"  R{p['row']:2d} {p['name']:20s} {p['tab']:16s} "
-              f"在庫予想={p['base']:4d} 7平日平均={p['wk7']:4d} 加重平均={p['wavg']:4d}")
 
     if args.dry_run:
         ex = plans[0]
-        print(f"\n[dry-run] 挿入位置: {ANCHOR_HEADER}"
-              f"({a1col(header.index(ANCHOR_HEADER)+1)})列の直後 → "
-              f"新列 {cols['alert']}, {cols['hint']}")
-        print(f"\n[dry-run] 在庫警告 ({ex['name']}):")
-        print("  " + build_alert_formula(cols, ex["row"]))
-        print(f"\n[dry-run] 調整の目安 ({ex['name']}):")
+        for key in COLUMN_ORDER:
+            print(f"\n[dry-run] {COLUMN_SPECS[key][0]} ({ex['name']} R{ex['row']}):")
+            print("  " + build_alert_formula(key, cols, ex["row"]))
+        print(f"\n[dry-run] {H_HINT} ({ex['name']}):")
         print("  " + build_hint_formula(cols, ex["row"], ex["tab"],
                                         ex["wk7"], ex["wavg"]))
         return 0
@@ -433,15 +536,16 @@ def main() -> int:
             "insertDimension": {
                 "range": {"sheetId": sheet_id, "dimension": "COLUMNS",
                           "startIndex": insert_at,
-                          "endIndex": insert_at + N_NEW},
+                          "endIndex": insert_at + N_INSERT},
                 "inheritFromBefore": False}}]})
-        print(f"{a1col(insert_at)}列の直後に{N_NEW}列挿入しました")
+        print(f"{a1col(insert_at)}列の直後に{N_INSERT}列挿入しました")
 
         # 条件付き書式の範囲が挿入列へ波及していないか確認し、波及していたら戻す
         after = cf_ranges(sp, sheet_id)
         fix_reqs = []
         for idx, (b, a) in enumerate(zip(before, after)):
-            want = [expected_after_insert(x, insert_at, N_NEW) for x in b["ranges"]]
+            want = [expected_after_insert(x, insert_at, N_INSERT)
+                    for x in b["ranges"]]
             if want != a["ranges"]:
                 print(f"  条件付き書式 #{idx} の範囲が波及 → 復元")
                 print(f"    now : {a['ranges']}")
@@ -469,11 +573,13 @@ def main() -> int:
             print("  条件付き書式の波及なし")
 
     # --- 2) ヘッダーと数式 ---
-    data = [{"range": f"{cols['alert']}1", "values": [[NEW_HEADERS[0]]]},
-            {"range": f"{cols['hint']}1", "values": [[NEW_HEADERS[1]]]}]
+    data = [{"range": f"{cols[key]}1", "values": [[COLUMN_SPECS[key][0]]]}
+            for key in COLUMN_ORDER]
+    data.append({"range": f"{cols['done']}1", "values": [[H_DONE]]})
     for p in plans:
-        data.append({"range": f"{cols['alert']}{p['row']}",
-                     "values": [[build_alert_formula(cols, p["row"])]]})
+        for key in COLUMN_ORDER:
+            data.append({"range": f"{cols[key]}{p['row']}",
+                         "values": [[build_alert_formula(key, cols, p["row"])]]})
         data.append({"range": f"{cols['hint']}{p['row']}",
                      "values": [[build_hint_formula(cols, p["row"], p["tab"],
                                                     p["wk7"], p["wavg"])]]})
@@ -503,89 +609,139 @@ def main() -> int:
     FIELDS = ("userEnteredFormat(backgroundColor,backgroundColorStyle,"
               "horizontalAlignment,verticalAlignment,wrapStrategy,textFormat)")
 
+    def col_range(c0: int, n: int = 1, r0: int = 1, r1: int | None = None):
+        return {"sheetId": sheet_id, "startRowIndex": r0,
+                "endRowIndex": r1 if r1 is not None else last_row,
+                "startColumnIndex": c0, "endColumnIndex": c0 + n}
+
+    done_idx = anchor + len(COLUMN_ORDER)
+    hint_idx = anchor + N_NEW
+
     reqs = [
-        # ヘッダー (2列)
+        # ヘッダー (梱包/販売調整/発注/対応済み)
         {"repeatCell": {
-            "range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1,
-                      "startColumnIndex": insert_at,
-                      "endColumnIndex": insert_at + N_NEW},
+            "range": col_range(anchor, N_NEW, 0, 1),
             "cell": cell_fmt(HEADER_BG, "CENTER", WHITE, True),
             "fields": FIELDS}},
-        # 在庫警告のデータ行: 中央寄せ・黒字・白地
+        # 3列のデータ行: 中央寄せ・黒字・白地 (隣接列からの引き継ぎ防止)。
+        # 表示は必ず文字列なので、旧「在庫警告」列から引き継いだ日付書式を
+        # TEXT に戻しておく (数値が紛れ込んだときに日付として化けるのを防ぐ)。
         {"repeatCell": {
-            "range": {"sheetId": sheet_id, "startRowIndex": 1,
-                      "endRowIndex": last_row,
-                      "startColumnIndex": insert_at,
-                      "endColumnIndex": insert_at + 1},
-            "cell": cell_fmt(DATA_BG, "CENTER", BLACK, False),
-            "fields": FIELDS}},
+            "range": col_range(anchor, len(COLUMN_ORDER)),
+            "cell": {"userEnteredFormat": dict(
+                cell_fmt(DATA_BG, "CENTER", BLACK, False)["userEnteredFormat"],
+                numberFormat={"type": "TEXT", "pattern": "@"})},
+            "fields": FIELDS + ",userEnteredFormat.numberFormat"}},
+        # 対応済み: 手入力欄。薄いグレー地 + 日付書式 M/d
+        {"repeatCell": {
+            "range": col_range(done_idx),
+            "cell": {"userEnteredFormat": {
+                "backgroundColor": DONE_INPUT_BG,
+                "backgroundColorStyle": {"rgbColor": DONE_INPUT_BG},
+                "horizontalAlignment": "CENTER",
+                "verticalAlignment": "MIDDLE",
+                "wrapStrategy": "WRAP",
+                "numberFormat": {"type": "DATE", "pattern": DONE_DATE_FORMAT},
+                "textFormat": txt(BLACK, False)}},
+            "fields": FIELDS + ",userEnteredFormat.numberFormat"}},
+        # 対応済みヘッダーの説明メモ
+        {"repeatCell": {
+            "range": col_range(done_idx, 1, 0, 1),
+            "cell": {"note": DONE_HEADER_NOTE},
+            "fields": "note"}},
         # 調整の目安のデータ行: 左寄せ・黒字・白地
         {"repeatCell": {
-            "range": {"sheetId": sheet_id, "startRowIndex": 1,
-                      "endRowIndex": last_row,
-                      "startColumnIndex": insert_at + 1,
-                      "endColumnIndex": insert_at + N_NEW},
+            "range": col_range(hint_idx),
             "cell": cell_fmt(DATA_BG, "LEFT", BLACK, False),
             "fields": FIELDS}},
         # 列幅
         {"updateDimensionProperties": {
             "range": {"sheetId": sheet_id, "dimension": "COLUMNS",
-                      "startIndex": insert_at, "endIndex": insert_at + 1},
-            "properties": {"pixelSize": COL_WIDTH_ALERT}, "fields": "pixelSize"}},
+                      "startIndex": anchor,
+                      "endIndex": anchor + len(COLUMN_ORDER)},
+            "properties": {"pixelSize": COL_WIDTH_ACT}, "fields": "pixelSize"}},
         {"updateDimensionProperties": {
             "range": {"sheetId": sheet_id, "dimension": "COLUMNS",
-                      "startIndex": insert_at + 1,
-                      "endIndex": insert_at + N_NEW},
+                      "startIndex": done_idx, "endIndex": done_idx + 1},
+            "properties": {"pixelSize": COL_WIDTH_DONE}, "fields": "pixelSize"}},
+        {"updateDimensionProperties": {
+            "range": {"sheetId": sheet_id, "dimension": "COLUMNS",
+                      "startIndex": hint_idx, "endIndex": hint_idx + 1},
             "properties": {"pixelSize": COL_WIDTH_HINT}, "fields": "pixelSize"}},
     ]
     sheets_retry(sp.batch_update, {"requests": reqs})
     print("書式設定完了")
 
-    # --- 4) 条件付き書式 (在庫警告列のデータ行のみ) ---
-    alert_range = {"sheetId": sheet_id, "startRowIndex": 1,
-                   "endRowIndex": last_row,
-                   "startColumnIndex": insert_at,
-                   "endColumnIndex": insert_at + 1}
-
-    # 既存の在庫警告ルール (旧: 🔴🟠🟡 / 新: 文言) を消してから張り直す。
-    # 旧ルールは絵文字を判定していたため、新文言には一致せず色が付かなくなる。
+    # --- 4) 条件付き書式 ---
+    # 既存のアラート用ルール (旧「在庫警告」1列分 / 前回の3列分) を消して張り直す。
     existing = cf_ranges(sp, sheet_id)
-    ours_values = set(LEGACY_MATCH_TEXTS) | {s[1] for s in ALERT_SPECS}
+    ours_texts = set(LEGACY_MATCH_TEXTS)
+    for key in COLUMN_ORDER:
+        ours_texts |= {s[1] for s in COLUMN_SPECS[key][1]}
+    ours_texts |= {M_DONE, M_OVERDUE}
+    our_cols = range(anchor, anchor + len(COLUMN_ORDER))
 
     def is_ours(rule: dict) -> bool:
-        br = rule.get("booleanRule", {})
-        cond = br.get("condition", {})
-        if cond.get("type") != "TEXT_CONTAINS":
-            return False
-        vals = [v.get("userEnteredValue") for v in cond.get("values", [])]
-        return any(v in ours_values for v in vals)
+        cond = rule.get("booleanRule", {}).get("condition", {})
+        vals = [v.get("userEnteredValue") or "" for v in cond.get("values", [])]
+        if cond.get("type") == "TEXT_CONTAINS" and any(v in ours_texts
+                                                       for v in vals):
+            return True
+        # 前回この関数が張った CUSTOM_FORMULA (3列の範囲に閉じているもの)
+        if cond.get("type") == "CUSTOM_FORMULA" and any(
+                f'"{t}"' in v for v in vals for t in ours_texts):
+            return all(rg.get("startColumnIndex") in our_cols
+                       and rg.get("endColumnIndex", 0) - 1 in our_cols
+                       for rg in rule.get("ranges", []))
+        return False
 
     del_reqs = [{"deleteConditionalFormatRule": {"sheetId": sheet_id, "index": i}}
                 for i, r in reversed(list(enumerate(existing))) if is_ours(r)]
     if del_reqs:
         sheets_retry(sp.batch_update, {"requests": del_reqs})
-        print(f"既存の在庫警告ルール {len(del_reqs)}件を削除しました")
+        print(f"既存のアラート用ルール {len(del_reqs)}件を削除しました")
 
     # 判定文字列は絵文字を含めない (日本語部分で一致させる)。
-    # どれも他の文言の部分文字列ではないので、評価順に依存しない。
+    # 数量が埋め込まれるので TEXT_CONTAINS では「🚚 5個送る」と
+    # 「🔥 急いで5個送る」を区別できない。除外語つきの CUSTOM_FORMULA を使う。
+    def match_formula(col: str, match: str, exclude: tuple) -> str:
+        cond = f'ISNUMBER(SEARCH("{match}",${col}2))'
+        for x in exclude:
+            cond += f',NOT(ISNUMBER(SEARCH("{x}",${col}2)))'
+        return f"=AND({cond})"
+
+    rules = []
+    # 3列共通 (対応済み) を先に置く → 同じセルに複数一致したとき先勝ち
+    for match, color in ((M_OVERDUE, "red"), (M_DONE, "grey")):
+        ranges = [col_range(anchor + i) for i in range(len(COLUMN_ORDER))]
+        formulas = [match_formula(cols[key], match, ()) for key in COLUMN_ORDER]
+        # 範囲ごとに基準セルの列が違うため、列ごとに1ルールずつ張る
+        for rg, f in zip(ranges, formulas):
+            rules.append((f"共通 {match}", color, [rg], f))
+    for key in COLUMN_ORDER:
+        col = cols[key]
+        c0 = anchor + COLUMN_ORDER.index(key)
+        for _k, match, exclude, sample, color, _sev in COLUMN_SPECS[key][1]:
+            rules.append((f"{COLUMN_SPECS[key][0]} {sample}", color,
+                          [col_range(c0)], match_formula(col, match, exclude)))
+
     cf_reqs = []
-    for disp, match, color, _sev in ALERT_SPECS:
+    for i, (label, color, ranges, formula) in enumerate(rules):
         bg = CF_COLORS[color]
         cf_reqs.append({"addConditionalFormatRule": {
-            "index": 0,
+            "index": i,
             "rule": {
-                "ranges": [alert_range],
+                "ranges": ranges,
                 "booleanRule": {
-                    "condition": {"type": "TEXT_CONTAINS",
-                                  "values": [{"userEnteredValue": match}]},
+                    "condition": {"type": "CUSTOM_FORMULA",
+                                  "values": [{"userEnteredValue": formula}]},
                     "format": {"backgroundColor": bg,
                                "backgroundColorStyle": {"rgbColor": bg}}}}}})
-        print(f"  {disp} → {color} (TEXT_CONTAINS {match!r})")
+        print(f"  #{i} {label} → {color}  {formula}")
     sheets_retry(sp.batch_update, {"requests": cf_reqs})
-    print(f"条件付き書式 {len(cf_reqs)}件を設定しました "
-          f"(範囲: {cols['alert']}2:{cols['alert']}{last_row})")
+    print(f"条件付き書式 {len(cf_reqs)}件を設定しました")
 
-    print("✅ 在庫警告2列 追加完了")
+    print("✅ 梱包 / 販売調整 / 発注 / 対応済み の4列 設定完了")
     return 0
 
 

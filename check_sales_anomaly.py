@@ -22,19 +22,26 @@
 
 あわせて「在庫アラート」も集計する (データ異常ではなく供給判断の材料):
   ダッシュボード２を読み、緊急度順に分類する。
+    ⚠ 未着            「対応済み」に日付があるのに20日を過ぎても在庫が戻らない
+                       (最優先。冒頭に出す)
     🛑 在庫切れ        FBA在庫0 / 総在庫0 / FBA在庫切れ予測日が今日以前
     ⚠️ 危険(在庫僅少)  FBA残り日数が1〜15日
-    📦 要発注(至急)    総数発注残り日数が ✖️ またはマイナス
+    📦 梱包            シート側「梱包」列   (❌欠品中 / 🔥急いで◯個送る / 🚚◯個送る)
+    🔽 販売調整        シート側「販売調整」列 (🛑セール全停止 / 🔽セール減らす)
+    🏭 発注            シート側「発注」列   (🏭至急◯個発注 / 🏭◯個発注)
+    📦 要発注(至急)    総数発注残り日数が ✖️ またはマイナス (上の発注に出た分は除く)
     📦 要発注(30日以内) 総数発注残り日数が0〜30日
     【発注済み・様子見】上の要発注のうち 発注中個数 ≧ 発注個数予測 のもの
-    在庫警告           シート側G列の判定 (❌欠品中 / 🏭すぐ発注 / 🛑セール全停止 /
-                       🔽セール減らす / 🔥急いで梱包 / 🚚梱包する)
+  「対応済み」列に日付を入れた商品 (✓ 済) は通知から丸ごと除外する。
+  梱包・発送して入庫見込みが立っているのにアラートが出続けるのを止めるため。
+  20日を過ぎても在庫が戻らなければ「⚠ 未着」として先頭に復活する。
+
   在庫が30日分になった時点で補充が到着している想定で運用しているため、
   FBA残り日数が30日を切っている = 予定どおりなら入庫しているはずの時点で
   入庫していない、というサイン。1ヶ月の猶予があればセールを調整して延ばせる。
   入庫の見込みが立っていれば無視してよい判断材料なので、異常件数や終了コードには
   含めない (通知には含める)。
-  在庫警告の文言は stock_alert_labels.py に集約 (シート側と共通の定数)。
+  文言・色・日数は stock_alert_labels.py に集約 (シート側と共通の定数)。
 
 ChatWork通知は2通に分けて送る (長いと読まれないため):
   1通目 📊 在庫アラート     … 上の在庫セクション
@@ -55,7 +62,7 @@ ChatWork通知は2通に分けて送る (長いと読まれないため):
 
 終了コード:
   0 = 異常なし
-  1 = 異常あり (在庫警告のみの場合は 0。あくまで判断材料のため)
+  1 = 異常あり (在庫アラートのみの場合は 0。あくまで判断材料のため)
   2 = 検査自体に失敗 (シートが読めない等)
 
 注意: 本スクリプトは読み取り専用。シートへの書き込みは一切行わない。
@@ -85,8 +92,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config.settings import Settings
 from oshima_tab_blocks_config import OSHIMA_TAB_BLOCKS
 from src.fetch_safety import sheets_retry
-# 在庫警告の文言はシート生成側と同じ定数を使う (食い違い防止)
-from stock_alert_labels import ALERT_SPECS, classify_alert
+# アラートの文言・日数はシート生成側と同じ定数を使う (食い違い防止)
+from stock_alert_labels import (
+    COLUMN_ORDER,
+    COLUMN_SPECS,
+    DONE_VALID_DAYS,
+    H_DONE,
+    K_DONE,
+    K_OVERDUE,
+    LEGACY_ALERT_HEADER,
+    SECTION_TITLES,
+    classify,
+)
 
 DEST_SPREADSHEET_ID = "1MzyWaqefWZvHcR4nHSrfzgwXaBA4oe-E9MlfhNjZTAU"
 SERIAL_DATE_BASE = datetime.date(1899, 12, 30)
@@ -109,7 +126,9 @@ DASHBOARD_TAB = "ダッシュボード２"
 # ヘッダーは改行を含むものがあるため、1行目だけを見て前方一致で照合する。
 DH_ORDER_DAYS = "総数発注残り日数"
 DH_DAYS = "FBA残り日数"
-DH_ALERT = "在庫警告"
+# 梱包 / 販売調整 / 発注 / 対応済み (2026-07-31 に「在庫警告」1列を分割)
+DH_ACT = {key: COLUMN_SPECS[key][0] for key in COLUMN_ORDER}
+DH_DONE = H_DONE
 DH_HINT = "調整の目安"
 DH_FBA_OUT_DATE = "FBA在庫切れ予測日"
 DH_ORDER_DATE = "総数発注予測日"
@@ -544,7 +563,7 @@ def audit_tab(ws, tab: str, blocks: List[dict], today: datetime.date,
 
 
 # ---------------------------------------------------------------------------
-# ダッシュボード２ (在庫切れ / 在庫僅少 / 要発注 / 在庫警告)
+# ダッシュボード２ (未着 / 在庫切れ / 在庫僅少 / 梱包 / 販売調整 / 発注 / 要発注)
 #   判定はシート側の数式が出した結果を読むだけ。書き込みは一切しない。
 #   列位置は必ず1行目のヘッダーから解決する (並べ替えられても壊れないように)。
 # ---------------------------------------------------------------------------
@@ -601,12 +620,41 @@ def to_date(v, today: Optional[datetime.date] = None) -> Optional[datetime.date]
 class DashRow:
     """ダッシュボード２の1行 (1商品)。"""
     __slots__ = ("name", "order_days", "order_days_text", "fba_days",
-                 "alert", "alert_sev", "hint", "fba_out_date", "order_date",
+                 "acts", "done_date", "hint", "fba_out_date", "order_date",
                  "total", "fba", "rsl", "sc", "order_qty", "ordering", "lead")
 
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
+        if self.acts is None:
+            self.acts = {}
+
+    def act(self, key: str) -> str:
+        """梱包 / 販売調整 / 発注 のセル文字列 (空欄なら "")。"""
+        return self.acts.get(key, "")
+
+    def sev(self, key: str) -> int:
+        return classify(self.act(key), key)[3]
+
+    def _key_of(self, key: str) -> str:
+        return classify(self.act(key), key)[0]
+
+    @property
+    def is_done(self) -> bool:
+        """✓ 済 = 対応済みで有効期間内。通知から丸ごと除外する。"""
+        return any(self._key_of(k) == K_DONE for k in COLUMN_ORDER)
+
+    @property
+    def is_overdue(self) -> bool:
+        """⚠ 未着 = 対応したはずなのに在庫が戻っていない。最優先で通知する。"""
+        return any(self._key_of(k) == K_OVERDUE for k in COLUMN_ORDER)
+
+    @property
+    def elapsed(self) -> Optional[int]:
+        """対応済みに入力された日からの経過日数。"""
+        if not self.done_date:
+            return None
+        return (datetime.date.today() - self.done_date).days
 
     @property
     def hand(self) -> Optional[float]:
@@ -635,18 +683,33 @@ def dstr(d: Optional[datetime.date]) -> str:
 
 
 class Dashboard:
-    """ダッシュボード２を通知セクションごとに分類したもの。"""
+    """ダッシュボード２を通知セクションごとに分類したもの。
 
-    __slots__ = ("rows", "url", "out_of_stock", "danger", "order_urgent",
-                 "order_soon", "ordered_wait", "alerts")
+    分類の順番:
+      1. ✓ 済 の行は最初に除外する (対応済み = 入庫待ち。通知しない)
+      2. ⚠ 未着 の行は「最優先」セクションだけに載せる (他には出さない)
+      3. 残りを 在庫切れ / 危険 / 梱包 / 販売調整 / 発注 / 要発注 に振り分ける
+    """
+
+    __slots__ = ("rows", "url", "done", "overdue", "out_of_stock", "danger",
+                 "order_urgent", "order_soon", "ordered_wait", "acts")
 
     def __init__(self, rows: List[DashRow], url: str, today: datetime.date):
         self.rows = rows
         self.url = url
 
+        # --- 対応済み (✓ 済) は通知しない ---
+        self.done = [r for r in rows if r.is_done]
+
+        # --- ⚠ 未着 (対応済みなのに在庫が戻らない) は最優先 ---
+        self.overdue = [r for r in rows if not r.is_done and r.is_overdue]
+        self.overdue.sort(key=lambda r: (-(r.elapsed or 0), r.days_key, r.name))
+
+        live = [r for r in rows if not r.is_done and not r.is_overdue]
+
         # --- 🛑 在庫切れ ---
         self.out_of_stock = [
-            r for r in rows
+            r for r in live
             if (r.fba is not None and r.fba <= 0)
             or (r.total is not None and r.total <= 0)
             or (r.fba_out_date is not None and r.fba_out_date <= today)
@@ -656,17 +719,28 @@ class Dashboard:
 
         # --- ⚠️ 危険 (在庫僅少): FBA残り日数 1〜15日 ---
         self.danger = [
-            r for r in rows
+            r for r in live
             if r.name not in gone
             and isinstance(r.fba_days, (int, float))
             and 1 <= r.fba_days <= DAYS_DANGER
         ]
         self.danger.sort(key=lambda r: (r.days_key, r.name))
-        shown = gone | {r.name for r in self.danger}
 
-        # --- 📦 要発注 ---
+        # --- 📦 梱包 / 🔽 販売調整 / 🏭 発注 (担当別の「やること」) ---
+        # 在庫切れ・危険と重複してもよい。あちらは「状況」、こちらは「誰が何を
+        # するか」で、倉庫担当が自分の行だけを見られることを優先する。
+        self.acts: Dict[str, List[DashRow]] = {}
+        for key in COLUMN_ORDER:
+            items = [r for r in live if r.act(key)]
+            items.sort(key=lambda r: (r.sev(key), r.days_key, r.name))
+            self.acts[key] = items
+        ordered = {r.name for r in self.acts["order"]}
+
+        # --- 📦 要発注 (リードタイム基準。上の「発注」に出た商品は除く) ---
         urgent, soon = [], []
-        for r in rows:
+        for r in live:
+            if r.name in ordered:
+                continue
             od, txt = r.order_days, r.order_days_text
             if "✖" in txt or (isinstance(od, (int, float)) and od < 0):
                 urgent.append(r)
@@ -686,19 +760,19 @@ class Dashboard:
         self.order_soon.sort(key=lambda r: (r.order_days_key, r.name))
         self.ordered_wait.sort(key=lambda r: (r.order_days_key, r.name))
 
-        # --- 在庫警告 (上の在庫切れ/危険と重複する商品は載せない) ---
-        self.alerts = [r for r in rows if r.alert and r.name not in shown]
-        self.alerts.sort(key=lambda r: (r.alert_sev, r.days_key, r.name))
-
     @property
     def n_order(self) -> int:
         return len(self.order_urgent) + len(self.order_soon)
 
     @property
+    def n_acts(self) -> int:
+        return sum(len(v) for v in self.acts.values())
+
+    @property
     def total_items(self) -> int:
         """通知すべき在庫案件の総数 (0なら在庫アラートは送らない)。"""
-        return (len(self.out_of_stock) + len(self.danger) + self.n_order
-                + len(self.ordered_wait) + len(self.alerts))
+        return (len(self.overdue) + len(self.out_of_stock) + len(self.danger)
+                + self.n_acts + self.n_order + len(self.ordered_wait))
 
 
 def scan_dashboard(sp, today: datetime.date) -> Tuple[Optional[Dashboard], List[str]]:
@@ -718,20 +792,26 @@ def scan_dashboard(sp, today: datetime.date) -> Tuple[Optional[Dashboard], List[
 
     header = [norm_header(h) for h in grid[0]]
     idx: Dict[str, Optional[int]] = {}
-    for key, name in (("order_days", DH_ORDER_DAYS), ("fba_days", DH_DAYS),
-                      ("alert", DH_ALERT), ("hint", DH_HINT),
-                      ("fba_out", DH_FBA_OUT_DATE), ("order_date", DH_ORDER_DATE),
-                      ("fba", DH_FBA_STOCK), ("rsl", DH_RSL_STOCK),
-                      ("sc", DH_SC_STOCK), ("order_qty", DH_ORDER_QTY),
-                      ("ordering", DH_ORDERING), ("lead", DH_LEAD_TIME)):
+    wanted = [("order_days", DH_ORDER_DAYS), ("fba_days", DH_DAYS),
+              ("done", DH_DONE), ("hint", DH_HINT),
+              ("fba_out", DH_FBA_OUT_DATE), ("order_date", DH_ORDER_DATE),
+              ("fba", DH_FBA_STOCK), ("rsl", DH_RSL_STOCK),
+              ("sc", DH_SC_STOCK), ("order_qty", DH_ORDER_QTY),
+              ("ordering", DH_ORDERING), ("lead", DH_LEAD_TIME)]
+    wanted += [(key, DH_ACT[key]) for key in COLUMN_ORDER]
+    for key, name in wanted:
         i = find_col(header, name)
         if i is None:
             warnings.append(f"[{DASHBOARD_TAB}] ヘッダー '{name}' が見つかりません")
         idx[key] = i
 
-    if idx["alert"] is None:
+    if any(idx[key] is None for key in COLUMN_ORDER):
+        extra = (f" (旧「{LEGACY_ALERT_HEADER}」列のままです)"
+                 if find_col(header, LEGACY_ALERT_HEADER) is not None else "")
         warnings.append(
-            f"[{DASHBOARD_TAB}] 在庫警告列が無いため集計できません。"
+            f"[{DASHBOARD_TAB}] "
+            f"{' / '.join(DH_ACT[k] for k in COLUMN_ORDER)} 列が無いため"
+            f"集計できません{extra}。"
             f"dashboard_stock_alert_columns.py を実行してください")
         return None, warnings
 
@@ -760,15 +840,13 @@ def scan_dashboard(sp, today: datetime.date) -> Tuple[Optional[Dashboard], List[
         name = str(row[0]).strip()
         if not name:
             continue
-        alert_text = str(val(row, "alert")).strip()
-        alert, _color, sev = classify_alert(alert_text)
         rows.append(DashRow(
             name=name,
             order_days=to_number(val(row, "order_days")),
             order_days_text=str(val(row, "order_days")).strip(),
             fba_days=to_number(val(row, "fba_days")),
-            alert=alert,
-            alert_sev=sev,
+            acts={key: str(val(row, key)).strip() for key in COLUMN_ORDER},
+            done_date=to_date(val(row, "done"), today),
             hint=str(val(row, "hint")).strip(),
             fba_out_date=to_date(val(row, "fba_out"), today),
             order_date=to_date(val(row, "order_date"), today),
@@ -803,10 +881,15 @@ def format_stock_alerts(dash: Optional[Dashboard]) -> List[str]:
         return lines
 
     lines.append("")
-    lines.append(f"  在庫切れ {len(dash.out_of_stock)}件 / "
-                 f"危険 {len(dash.danger)}件 / 要発注 {dash.n_order}件 / "
-                 f"発注済み・様子見 {len(dash.ordered_wait)}件 / "
-                 f"在庫警告 {len(dash.alerts)}件")
+    lines.append(f"  未着 {len(dash.overdue)}件 / "
+                 f"在庫切れ {len(dash.out_of_stock)}件 / "
+                 f"危険 {len(dash.danger)}件 / "
+                 f"梱包 {len(dash.acts['pack'])}件 / "
+                 f"販売調整 {len(dash.acts['sale'])}件 / "
+                 f"発注 {len(dash.acts['order'])}件 / "
+                 f"要発注 {dash.n_order}件 / "
+                 f"様子見 {len(dash.ordered_wait)}件 "
+                 f"(対応済みで除外 {len(dash.done)}件)")
 
     def sec(title: str, items: List[DashRow], fmt) -> None:
         if not items:
@@ -817,12 +900,20 @@ def format_stock_alerts(dash: Optional[Dashboard]) -> List[str]:
         for r in items:
             lines.extend(x for x in fmt(r) if x)
 
+    sec(f"⚠ 未着 (対応済みなのに{DONE_VALID_DAYS}日経過)", dash.overdue, lambda r: [
+        f"  {r.name:<20} 対応 {dstr(r.done_date)} から{r.elapsed}日 / "
+        f"残{num(r.fba_days):>5}日 / FBA{num(r.fba):>7} / 手元{num(r.hand):>7}"])
     sec("🛑 在庫切れ", dash.out_of_stock, lambda r: [
         f"  {r.name:<20} FBA{num(r.fba):>8} / 総在庫{num(r.total):>8} / "
         f"手元{num(r.hand):>8} / 発注中{num(r.ordering):>8}"])
     sec("⚠️ 危険 (在庫僅少)", dash.danger, lambda r: [
-        f"  {r.name:<20} 残{num(r.fba_days):>5}日 / FBA{num(r.fba):>7} / {r.alert}",
+        f"  {r.name:<20} 残{num(r.fba_days):>5}日 / FBA{num(r.fba):>7}",
         f"      {r.hint}" if r.hint else ""])
+    for key in COLUMN_ORDER:
+        sec(SECTION_TITLES[key], dash.acts[key], lambda r, k=key: [
+            f"  {r.name:<20} {r.act(k):<18} 残{num(r.fba_days):>5}日 / "
+            f"FBA{num(r.fba):>7} / 手元{num(r.hand):>7}",
+            f"      {r.hint}" if k == COLUMN_ORDER[0] and r.hint else ""])
     sec("📦 要発注 (至急)", dash.order_urgent, lambda r: [
         f"  {r.name:<20} 発注予測日 {dstr(r.order_date):<12} "
         f"発注{num(r.order_qty):>8} / 発注中{num(r.ordering):>8} / "
@@ -834,12 +925,10 @@ def format_stock_alerts(dash: Optional[Dashboard]) -> List[str]:
     sec("【発注済み・様子見】", dash.ordered_wait, lambda r: [
         f"  {r.name:<20} 発注中{num(r.ordering):>8} ≧ "
         f"予測{num(r.order_qty):>8} / 発注予測日 {dstr(r.order_date)}"])
-    sec("■ 在庫警告 (上記以外)", dash.alerts, lambda r: [
-        f"  {r.name:<20} {r.alert:<14} 残{num(r.fba_days):>5}日 / "
-        f"FBA{num(r.fba):>7}  {r.hint}"])
 
     lines.append("")
-    lines.append("  ※ 入庫の見込みが立っていれば無視して構いません (判断材料)")
+    lines.append(f"  ※ 対応したら「{DH_DONE}」列に日付を入れてください。"
+                 f"{DONE_VALID_DAYS}日間はこの通知から消えます")
     return lines
 
 
@@ -927,52 +1016,64 @@ def _section(out: List[str], title: str, items: List[DashRow], fmt) -> None:
 
 def format_chatwork_stock(dash: Dashboard, today: datetime.date,
                           n_anomalies: int) -> str:
-    """1通目: 在庫アラート。緊急度の高い順に並べる。"""
+    """1通目: 在庫アラート。
+
+    並び順:
+      ⚠ 未着 (最優先) → 状況 (在庫切れ / 危険) → 担当別のやること
+      (📦 梱包 / 🔽 販売調整 / 🏭 発注) → 要発注 → 発注済み・様子見
+    「対応済み」に日付が入っている商品 (✓ 済) は最初から除いてある。
+    """
     out = [f"[info][title]📊 在庫アラート ({today.isoformat()})[/title]"]
-    out.append(f"在庫切れ{len(dash.out_of_stock)}件 / 危険{len(dash.danger)}件 / "
-               f"要発注{dash.n_order}件 / データ異常{n_anomalies}件")
+    head = (f"未着{len(dash.overdue)}件 / 在庫切れ{len(dash.out_of_stock)}件 / "
+            f"危険{len(dash.danger)}件 / 梱包{len(dash.acts['pack'])}件 / "
+            f"販売調整{len(dash.acts['sale'])}件 / 発注{len(dash.acts['order'])}件 / "
+            f"データ異常{n_anomalies}件")
+    if dash.done:
+        head += f"\n（対応済みのため除外: {len(dash.done)}件）"
+    out.append(head)
+
+    _section(out, f"⚠ 未着（対応済みなのに{DONE_VALID_DAYS}日以上）", dash.overdue,
+             lambda r: [
+                 f"  ・{r.name} 対応{dstr(r.done_date)}から{r.elapsed}日 / "
+                 f"残{num(r.fba_days)}日 / FBA{num(r.fba)} / 手元{num(r.hand)}"])
 
     _section(out, "🛑 在庫切れ", dash.out_of_stock, lambda r: [
         f"  ・{r.name} FBA{num(r.fba)} / 総在庫{num(r.total)} / "
         f"手元{num(r.hand)} / 発注中{num(r.ordering)}"])
 
     _section(out, "⚠️ 危険（在庫僅少）", dash.danger, lambda r: [
-        f"  ・{r.name} 残{num(r.fba_days)}日 / FBA{num(r.fba)} / {r.alert}",
+        f"  ・{r.name} 残{num(r.fba_days)}日 / FBA{num(r.fba)}",
         f"     {r.hint}" if r.hint else ""])
 
-    _section(out, "📦 要発注（至急）", dash.order_urgent, lambda r: [
+    # 担当別の「やること」。状況セクションと重複してよい (見る人が違う)
+    _section(out, SECTION_TITLES["pack"], dash.acts["pack"], lambda r: [
+        f"  ・{r.name} {r.act('pack')}（残{num(r.fba_days)}日 / "
+        f"手元{num(r.hand)}）"])
+    _section(out, SECTION_TITLES["sale"], dash.acts["sale"], lambda r: [
+        f"  ・{r.name} {r.act('sale')}（残{num(r.fba_days)}日 / "
+        f"FBA{num(r.fba)} / 手元{num(r.hand)}）"])
+    _section(out, SECTION_TITLES["order"], dash.acts["order"], lambda r: [
+        f"  ・{r.name} {r.act('order')}（残{num(r.fba_days)}日 / "
+        f"発注中{num(r.ordering)} / LT{num(r.lead)}日）"])
+
+    _section(out, "📦 要発注（至急・上記以外）", dash.order_urgent, lambda r: [
         f"  ・{r.name} 発注予測日{dstr(r.order_date)} / "
         f"発注{num(r.order_qty)}個 / 発注中{num(r.ordering)} / "
         f"LT{num(r.lead)}日"])
 
-    _section(out, f"📦 要発注（{DAYS_ORDER_SOON}日以内）", dash.order_soon, lambda r: [
-        f"  ・{r.name} あと{num(r.order_days)}日 ({dstr(r.order_date)}) / "
-        f"発注{num(r.order_qty)}個 / 発注中{num(r.ordering)} / "
-        f"LT{num(r.lead)}日"])
+    _section(out, f"📦 要発注（{DAYS_ORDER_SOON}日以内・上記以外）", dash.order_soon,
+             lambda r: [
+                 f"  ・{r.name} あと{num(r.order_days)}日 ({dstr(r.order_date)}) / "
+                 f"発注{num(r.order_qty)}個 / 発注中{num(r.ordering)} / "
+                 f"LT{num(r.lead)}日"])
 
     _section(out, "【発注済み・様子見】", dash.ordered_wait, lambda r: [
         f"  ・{r.name} 発注中{num(r.ordering)} ≧ 予測{num(r.order_qty)} "
         f"({dstr(r.order_date)})"])
 
-    # 在庫警告: 上の在庫切れ/危険と重複しないものだけを文言ごとにまとめる
-    if dash.alerts:
-        out.append("")
-        out.append(f"[b]■ 在庫警告（上記以外）[/b] {len(dash.alerts)}件")
-        by_alert: Dict[str, List[DashRow]] = defaultdict(list)
-        for r in dash.alerts:
-            by_alert[r.alert].append(r)
-        for text, _m, _c, _s in ALERT_SPECS:
-            items = by_alert.get(text)
-            if not items:
-                continue
-            names = [f"{r.name}({num(r.fba_days)}日)"
-                     for r in items[:MAX_PER_SECTION]]
-            more = (f" …他{len(items) - MAX_PER_SECTION}件"
-                    if len(items) > MAX_PER_SECTION else "")
-            out.append(f"  {text} {len(items)}件: " + "、".join(names) + more)
-        out.append("  ※入庫の見込みが立っていれば無視可")
-
     out.append("")
+    out.append(f"※対応したら「{DH_DONE}」列に日付を入れてください。"
+               f"{DONE_VALID_DAYS}日間はこの通知から消えます")
     out.append(dash.url)
     out.append("[/info]")
     return "\n".join(out)
@@ -1196,10 +1297,13 @@ def main() -> int:
             dash, sa_warns = scan_dashboard(sp, today)
             warnings.extend(sa_warns)
             if dash:
-                print(f"  [{DASHBOARD_TAB}] 在庫切れ{len(dash.out_of_stock)} / "
-                      f"危険{len(dash.danger)} / 要発注{dash.n_order} / "
-                      f"様子見{len(dash.ordered_wait)} / 警告{len(dash.alerts)}",
-                      file=sys.stderr)
+                print(f"  [{DASHBOARD_TAB}] 未着{len(dash.overdue)} / "
+                      f"在庫切れ{len(dash.out_of_stock)} / "
+                      f"危険{len(dash.danger)} / 梱包{len(dash.acts['pack'])} / "
+                      f"販売調整{len(dash.acts['sale'])} / "
+                      f"発注{len(dash.acts['order'])} / 要発注{dash.n_order} / "
+                      f"様子見{len(dash.ordered_wait)} / "
+                      f"対応済み除外{len(dash.done)}", file=sys.stderr)
         except Exception as e:  # noqa: BLE001
             warnings.append(f"[{DASHBOARD_TAB}] 在庫アラートの集計に失敗: {e}")
             dash = None
