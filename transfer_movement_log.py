@@ -17,14 +17,20 @@
   R 納品内容 =EXACT(E,N) / S 運送時間 =DATEDIF(A,O,"d")
 
 --- 転記ルール -------------------------------------------------------------
-  A. 輸送を伴う移動 (移動元あり)
+  A. 輸送を伴う移動 (移動元あり・中国工場以外)
        K未チェック                     → A列の日に  E個 / FROM=map(移動元) / TO=輸送中
        P未チェック かつ N・O が埋まる  → O列の日に  N個 / FROM=輸送中     / TO=map(移動先)
-  B. 発注 (移動元が空欄)
+  B. 発注 (移動元・移動先とも空欄 / 状態=発注中)
        K未チェック                     → A列の日に  E個 / FROM=(空)       / TO=発注中
        P未チェック かつ N・O が埋まる  → O列の日に  N個 / FROM=発注中     / TO=map(移動先)
+  B2. 工場入荷 (移動元=中国工場 → 移動先=イーウーパスポート　中国)
+       生産完了を意味する。発注中から中国倉庫へ移すだけで輸送段階は挟まない。
+       K未チェック                     → A列の日に  E個 / FROM=発注中     / TO=中国
+       ※1本の記録で完結するため P (到着) 側の処理は行わない。
   C. 日付衝突: 当日→翌日→前日→翌々日→前々日… の順に空き列を探す (±14日)
   D. メモ: 数量・FROM・TO の3セルすべてに同一メモを付ける
+  E. 到着日の自動推定はしない。N列(今到着個数)・O列(最後到着日付) が
+     人手で埋まっている行だけを到着として扱う。N・O には書き込まない。
 
 --- 一覧への書き戻し -------------------------------------------------------
   出発／発注を転記 → K列 = TRUE のみ (L列は書かない)
@@ -38,12 +44,15 @@
   4. ロックファイルによる多重起動ガード
   5. --dry-run で書き込まず内容だけ表示
   6. --row N で特定の1行だけ処理
-  7. Sheets API は src/fetch_safety.py の sheets_retry でリトライ
+  7. --skip-row N / --exclude-sku CODE で個別に除外 (手入力済みの行など)
+  8. Sheets API は src/fetch_safety.py の sheets_retry でリトライ
 
 使い方:
   python3 transfer_movement_log.py --row 952 --dry-run
   python3 transfer_movement_log.py --row 952
   python3 transfer_movement_log.py --dry-run            # 952行目以降を全件
+  python3 transfer_movement_log.py --skip-row 987       # 987行目だけ除外
+  python3 transfer_movement_log.py --exclude-sku gc-02rainbow-35
 """
 
 from __future__ import annotations
@@ -87,10 +96,15 @@ ALLOWED_LOCATIONS = {
 # (プルダウンにも無いため書き込むとデータ検証エラーになる)
 UNSUPPORTED_LOCATIONS = {"就労支援所", "アールステージ"}
 
+# 「中国工場」が移動元のときは特別扱い。生産が終わって中国倉庫へ入るという
+# 意味なので、商品タブでは「発注中 → 中国」の1本で記録する (輸送段階なし)。
+FACTORY_SOURCE = "中国工場"
+FACTORY_DEST = "中国"
+
 # 一覧の移動元/移動先 → 商品タブの FROM/TO 値。キーは norm() 済み。
 LOCATION_MAP_RAW = {
     "イーウーパスポート　中国": "中国",
-    "中国工場": "中国",
+    "中国工場": "中国",      # 移動先のとき。移動元のときは FACTORY_SOURCE 側で処理
     "事務所 amazon用": "事務所(Amazon)",
     "事務所 amazon以外": "事務所(他)",
     "荒瀬倉庫 amazon用": "荒瀬(Amazon)",
@@ -162,6 +176,7 @@ def is_blank(v: Any) -> bool:
 
 LOCATION_MAP = {norm(k): v for k, v in LOCATION_MAP_RAW.items()}
 SKU_ALIAS = {norm(k): norm(v) for k, v in SKU_ALIAS_RAW.items()}
+NORM_FACTORY = norm(FACTORY_SOURCE)
 
 
 def build_block_index() -> Dict[str, Tuple[str, dict]]:
@@ -210,7 +225,8 @@ class Task:
                  cell_from: str, cell_to: str,
                  journey_from: str, journey_to: str, extra_note: str = ""):
         self.list_row = list_row
-        self.kind = kind                # "departure" / "order" / "arrival"
+        # "departure" / "order" / "factory_in" / "arrival"
+        self.kind = kind
         self.sku = sku
         self.tab = tab
         self.blk = blk
@@ -231,6 +247,8 @@ class Task:
             body = f"（輸送中の記録。到着後に {self.journey_to} へ計上されます）"
         elif self.kind == "order":
             body = f"（発注中の記録。到着後に {self.journey_to} へ計上されます）"
+        elif self.kind == "factory_in":
+            body = "（工場からの入荷）"
         else:
             body = f"（輸送中から {self.journey_to} への到着記録）"
         lines = [head, body]
@@ -245,8 +263,10 @@ class Task:
 
 def build_tasks(list_row: int, row: List[Any],
                 index: Dict[str, Tuple[str, dict]],
-                warn: List[str]) -> List[Task]:
+                warn: List[str],
+                exclude_skus: Optional[set] = None) -> List[Task]:
     """一覧の1行から転記タスクを組み立てる。"""
+    exclude_skus = exclude_skus or set()
     def cell(i: int) -> Any:
         return row[i - 1] if len(row) >= i else ""
 
@@ -254,10 +274,14 @@ def build_tasks(list_row: int, row: List[Any],
     sku = cell(2)
     src_raw, dst_raw = cell(3), cell(4)
     qty_raw = cell(5)
+    state = cell(9)
     flag_k, flag_p = cell(11), cell(16)
     arrive_qty_raw, arrive_date_raw = cell(14), cell(15)
 
     if is_blank(sku):
+        return []
+    if norm(sku) in exclude_skus:
+        warn.append(f"{list_row}行目: SKU {sku!r} は --exclude-sku 指定のため除外")
         return []
 
     resolved = resolve_block(sku, index)
@@ -271,8 +295,10 @@ def build_tasks(list_row: int, row: List[Any],
 
     tasks: List[Task] = []
     is_order = is_blank(src_raw)
+    # 「中国工場」発 = 生産完了。発注中 → 中国 の1本で記録し輸送段階は挟まない。
+    is_factory = norm(src_raw) == NORM_FACTORY
 
-    # --- 出発 / 発注 -------------------------------------------------------
+    # --- 出発 / 発注 / 工場入荷 -------------------------------------------
     if not bool(flag_k):
         if move_date is None:
             warn.append(f"{list_row}行目: 移動日(A列)が読めないため出発分をスキップ")
@@ -284,12 +310,33 @@ def build_tasks(list_row: int, row: List[Any],
             if not qty:
                 warn.append(f"{list_row}行目: 個数(E列)が数値でないため出発分をスキップ ({qty_raw!r})")
             elif is_order:
+                # 移動元・移動先とも空欄 (状態=発注中) → FROM=空欄 / TO=発注中
                 if dst_err:
                     warn.append(f"{list_row}行目: 移動先が転記できません — {dst_err}")
+                elif dst:
+                    warn.append(f"{list_row}行目: 移動元が空欄なのに移動先 {dst_raw!r} が"
+                                f"入っています。発注として扱えないためスキップ")
+                elif norm(state) not in ("", norm("発注中")):
+                    warn.append(f"{list_row}行目: 移動元・移動先が空欄ですが状態が"
+                                f"{state!r} です。発注として扱えないためスキップ")
                 else:
                     tasks.append(Task(list_row, "order", sku, tab, blk,
                                       move_date, qty, "", "発注中",
-                                      "発注", dst or "(未定)"))
+                                      "発注", "(未定)"))
+            elif is_factory:
+                # 工場 → 中国倉庫。発注中から中国へ移すだけ。
+                if dst_err:
+                    warn.append(f"{list_row}行目: 移動先が転記できません — {dst_err}")
+                elif dst != FACTORY_DEST:
+                    warn.append(
+                        f"{list_row}行目: 移動元が「{FACTORY_SOURCE}」ですが移動先が "
+                        f"{dst_raw!r} ({dst or '空欄'}) です。"
+                        f"「{FACTORY_SOURCE}」→「{FACTORY_DEST}」以外は"
+                        f"扱いが決まっていないためスキップします")
+                else:
+                    tasks.append(Task(list_row, "factory_in", sku, tab, blk,
+                                      move_date, qty, "発注中", FACTORY_DEST,
+                                      "発注中", FACTORY_DEST))
             elif src_err:
                 warn.append(f"{list_row}行目: 移動元が転記できません — {src_err}")
             elif dst_err:
@@ -299,8 +346,12 @@ def build_tasks(list_row: int, row: List[Any],
                                   move_date, qty, src, "輸送中",
                                   src, dst or "(未定)"))
 
-    # --- 到着 -------------------------------------------------------------
-    if not bool(flag_p) and not is_blank(arrive_qty_raw) and not is_blank(arrive_date_raw):
+    # --- 到着 (N列・O列が人手で埋まっている行だけ。自動推定はしない) ------
+    if is_factory:
+        if not is_blank(arrive_qty_raw) or not is_blank(arrive_date_raw):
+            warn.append(f"{list_row}行目: 移動元が「{FACTORY_SOURCE}」の行は"
+                        f"輸送段階が無いため、N/O列があっても到着分は転記しません")
+    elif not bool(flag_p) and not is_blank(arrive_qty_raw) and not is_blank(arrive_date_raw):
         arrive_date = serial_to_date(arrive_date_raw)
         try:
             arrive_qty = int(arrive_qty_raw)
@@ -518,7 +569,15 @@ def main() -> None:
                    help=f"処理開始行 (既定 {ABSOLUTE_MIN_ROW}。これ未満は拒否)")
     p.add_argument("--to-row", type=int, help="処理終了行 (既定: 最終データ行)")
     p.add_argument("--dry-run", action="store_true", help="書き込まず内容だけ表示")
+    p.add_argument("--skip-row", type=int, action="append", default=[],
+                   metavar="N",
+                   help="この一覧行を処理しない (K列にもチェックを入れない)。複数指定可")
+    p.add_argument("--exclude-sku", action="append", default=[], metavar="CODE",
+                   help="このSKUの行を処理しない。複数指定可")
     args = p.parse_args()
+
+    skip_rows = set(args.skip_row)
+    exclude_skus = {norm(s) for s in args.exclude_sku}
 
     if args.row is not None:
         start_row = end_row = args.row
@@ -569,7 +628,11 @@ def main() -> None:
         list_row = start_row + i
         if list_row < ABSOLUTE_MIN_ROW:      # 安全装置1 (二重の歯止め)
             continue
-        tasks += build_tasks(list_row, list(row), index, warn)
+        if list_row in skip_rows:
+            warn.append(f"{list_row}行目: --skip-row 指定のため処理しません "
+                        f"(K列にもチェックを入れません)")
+            continue
+        tasks += build_tasks(list_row, list(row), index, warn, exclude_skus)
 
     if not tasks:
         for w in warn:
@@ -614,7 +677,8 @@ def main() -> None:
         view.reserve(t.blk, col, t)
 
     # --- 表示 -------------------------------------------------------------
-    kind_ja = {"departure": "出発", "order": "発注", "arrival": "到着"}
+    kind_ja = {"departure": "出発", "order": "発注",
+               "factory_in": "工場入荷", "arrival": "到着"}
     todo = [t for t in tasks if t.skip_reason is None]
     print(f"\n--- 転記内容 {len(todo)}件 / スキップ {len(tasks) - len(todo)}件 ---",
           file=sys.stderr)
@@ -680,7 +744,7 @@ def main() -> None:
         def cell(i: int) -> Any:
             return row_vals[i - 1] if len(row_vals) >= i else ""
 
-        if any(t.kind in ("departure", "order") for t in ts):
+        if any(t.kind in ("departure", "order", "factory_in") for t in ts):
             list_reqs.append(update_cell_request(list_ws.id, list_row, 11, True, None))
             done_msgs.append(f"K{list_row} = TRUE")
         if any(t.kind == "arrival" for t in ts):
