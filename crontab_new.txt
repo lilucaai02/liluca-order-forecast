@@ -1,6 +1,10 @@
+# crontab の内容 (実体は /Users/aililuca/cron_new.txt。ここは版管理用の写し)
+# 反映: crontab /Users/aililuca/cron_new.txt
+# 更新: 2026-07-31 朝のChatWork通知を3通構成に (8:00 = 1・2通目 / 8:10 = 3通目)
 0 5 * * * /usr/bin/python3 /Users/aililuca/amazon/daily_inventory_log.py >> /Users/aililuca/amazon/data/daily_log.txt 2>&1
-0 8 * * * /bin/bash /Users/aililuca/amazon/scripts/morning_chatwork.sh
-5 5 * * * /usr/bin/python3 /Users/aililuca/amazon/daily_inventory_amazon_wide.py >> /Users/aililuca/amazon/data/daily_amazon_wide.log 2>&1
+# 朝の ChatWork 通知 3通目: 在庫切れ・危険・要発注 (8:00の check_sales_anomaly.py の2通のあと)
+10 8 * * * /bin/bash /Users/aililuca/amazon/scripts/morning_chatwork.sh
+5 5 * * * /usr/bin/python3 /Users/aililuca/amazon/daily_amazon_inventory_asin.py >> /Users/aililuca/amazon/data/daily_amazon_inventory_asin.log 2>&1
 10 5 * * * /bin/bash /Users/aililuca/amazon/scripts/transfer_amazon_inventory_all.sh >> /Users/aililuca/amazon/data/daily_transfer.log 2>&1
 15 5 * * * /usr/bin/python3 /Users/aililuca/amazon/daily_amazon_sales.py >> /Users/aililuca/amazon/data/daily_sales.log 2>&1
 20 5 * * * /bin/bash /Users/aililuca/amazon/scripts/transfer_amazon_sales_all.sh >> /Users/aililuca/amazon/data/daily_transfer.log 2>&1
@@ -8,3 +12,10 @@
 30 5 * * * /bin/bash /Users/aililuca/amazon/scripts/transfer_rakuten_inventory_all.sh >> /Users/aililuca/amazon/data/daily_transfer.log 2>&1
 35 5 * * * /usr/bin/python3 /Users/aililuca/amazon/daily_rakuten_sales.py >> /Users/aililuca/amazon/data/daily_rakuten.log 2>&1
 40 5 * * * /bin/bash /Users/aililuca/amazon/scripts/transfer_rakuten_sales_all.sh >> /Users/aililuca/amazon/data/daily_transfer.log 2>&1
+#45 5 * * * /usr/bin/python3 /Users/aililuca/amazon/notify_sales_anomaly.py >> /Users/aililuca/amazon/data/anomaly.log 2>&1  # 2026-07-31 停止: SyntaxErrorで一度も起動できておらず実害なし。日次通知は check_sales_anomaly.py --notify (8:00) の2通に集約。予実乖離検知が必要になったら手動実行 or この行を復活
+0 12 * * * /bin/bash /Users/aililuca/amazon/scripts/noon_sales_resync.sh >> /Users/aililuca/amazon/data/noon_resync.log 2>&1
+#50 12 * * * /usr/bin/python3 /Users/aililuca/amazon/notify_sales_anomaly.py >> /Users/aililuca/amazon/data/anomaly.log 2>&1  # 2026-07-31 停止: 同上 (5:45と同一処理の重複実行)
+50 5 * * * /usr/bin/python3 /Users/aililuca/amazon/daily_yahoo_inventory.py >> /Users/aililuca/amazon/data/daily_yahoo.log 2>&1
+55 5 * * * /bin/bash /Users/aililuca/amazon/scripts/transfer_oshima_all.sh >> /Users/aililuca/amazon/data/oshima_transfer.log 2>&1
+# 朝の ChatWork 通知 1通目(📊 在庫アラート) と 2通目(🔧 販売データ異常)
+0 8 * * * /usr/bin/python3 /Users/aililuca/amazon/check_sales_anomaly.py --notify >> /Users/aililuca/amazon/data/sales_anomaly_check.log 2>&1
