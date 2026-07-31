@@ -120,6 +120,9 @@ class Settings(BaseSettings):
     # ChatWork
     chatwork_api_token: str = ""
     chatwork_room_id: str = ""
+    # 通知の種類ごとに送信先を分けたい場合に指定する (未設定なら chatwork_room_id)
+    chatwork_room_id_stock: str = ""   # 在庫アラート
+    chatwork_room_id_data: str = ""    # 販売データ異常
 
     # ngrok 公開アクセス用 Basic 認証
     ngrok_basic_user: str = ""

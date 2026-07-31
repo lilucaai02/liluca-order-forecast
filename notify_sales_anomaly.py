@@ -144,6 +144,12 @@ def post_to_chatwork(token: str, room_id: str, body: str) -> dict:
 
 
 def main():
+    # global 宣言は同じスコープで名前を使う前に置く必要がある。
+    # 以前は --rate/--abs-diff の default= で参照したあとに宣言していたため
+    # SyntaxError: name 'THRESHOLD_RATE' is used prior to global declaration
+    # となり、cron からは一度も起動できていなかった (2026-07-31 修正)。
+    global THRESHOLD_RATE, THRESHOLD_ABS
+
     parser = argparse.ArgumentParser()
     yesterday = (datetime.date.today() - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
     parser.add_argument("--date", default=yesterday, help="判定日 (default: 昨日)")
@@ -153,7 +159,6 @@ def main():
                         help="絶対差閾値 (default 5)")
     args = parser.parse_args()
 
-    global THRESHOLD_RATE, THRESHOLD_ABS
     THRESHOLD_RATE = args.rate
     THRESHOLD_ABS = args.abs_diff
 

@@ -16,28 +16,36 @@
   発注中     = 発注中個数
   梱包必要数 = FBA梱包必要数
 
-判定 (上から順に評価):
+判定 (上から順に評価。2026-07-31 の変更では条件は一切いじらず表示文言だけ差し替えた):
   在庫日数が数値でない or 30より大きい       → ""            (アラートなし)
-  在庫日数 <= 0                             → 🔴 欠品中
-  手元在庫 >= 梱包必要数 かつ 在庫日数 <= 15 → 🟠 至急梱包    (自力で解決できる)
-  手元在庫 >= 梱包必要数                     → 🟡 要梱包
-  発注中 > 0 かつ 在庫日数 <= 15            → 🔴 セール停止推奨
-  発注中 > 0                                → 🟠 セール調整検討
-  上記以外 (手元も発注中もなし)              → 🔴 緊急・発注なし
+  在庫日数 <= 0                             → ❌ 欠品中       (赤)
+  手元在庫 >= 梱包必要数 かつ 在庫日数 <= 15 → 🔥 急いで梱包   (橙 / 自力で解決できる)
+  手元在庫 >= 梱包必要数                     → 🚚 梱包する     (黄)
+  発注中 > 0 かつ 在庫日数 <= 15            → 🛑 セール全停止 (赤)
+  発注中 > 0                                → 🔽 セール減らす (橙)
+  上記以外 (手元も発注中もなし)              → 🏭 すぐ発注     (赤)
+
+  アイコンで「何をするか」、背景色で「いつまでに」を表す。
+  🏭 = 工場に頼む / 🚚 🔥 = 自分で動かす / 🛑 🔽 = 売る量を絞る。
+  文言と色の対応は stock_alert_labels.py に集約している。
 
   C列は "✖️" や "−" の文字列になることがあるため ISNUMBER で弾く。
   全体を IFERROR でラップし、エラー時は空欄。
 
 --- 調整の目安 (2列目) ---
 在庫警告が空欄でない商品にのみ表示:
-  「セール停止で◯日 ／ 60日持たせるには◯個/日以下」
+  「このまま◯日 ／ 停止で◯日 ／ 14日持たせるには◯個/日」
 
-  セール停止で◯日 = FBA在庫数 ÷ 抑制ペース
+  このまま◯日 = FBA残り日数 (C列) …… 何もしなければ在庫が尽きるまでの日数
+  停止で◯日   = FBA在庫数 ÷ 抑制ペース (切り捨て)
     抑制ペース = 該当商品タブの
                  「直近7平日セール以外平均」と「直近セール以外加重平均」の
                  大きい方 (安全側 = 消費が多い前提で見積もる)
-    抑制ペースが0以下なら「セール停止で在庫維持可」
-  60日持たせるには◯個/日以下 = FBA在庫数 ÷ 60 (小数第1位)
+    抑制ペースが0以下なら「停止で在庫維持可」
+  14日持たせるには◯個/日 = FBA在庫数 ÷ 14 (小数第1位)
+    目標日数は stock_alert_labels.HINT_TARGET_DAYS の1箇所で定義。
+    以前は60日だったが、30日で警告が出る運用では警告時点の在庫が
+    30日分しかなく60日は物理的に持たないため、意味のない数字だった。
 
 参照行は商品タブのA列ラベルで特定する (config の行番号は当てにしない)。
 
@@ -60,6 +68,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src
 
 from config.settings import Settings
 from fetch_safety import sheets_retry
+from stock_alert_labels import (
+    ALERT_SPECS,
+    A_OUT_OF_STOCK,
+    A_ORDER_NOW,
+    A_PACK,
+    A_PACK_URGENT,
+    A_SALE_REDUCE,
+    A_SALE_STOP,
+    HINT_TARGET_DAYS,
+    LEGACY_MATCH_TEXTS,
+)
 
 DEST_ID = "1MzyWaqefWZvHcR4nHSrfzgwXaBA4oe-E9MlfhNjZTAU"
 DASH = "ダッシュボード２"
@@ -88,7 +107,7 @@ L_WEIGHTED_AVG = "直近セール以外加重平均"
 
 DAYS_ALERT = 30    # これ以下でアラート開始 (補充が届いているはずの水準)
 DAYS_URGENT = 15   # これ以下は至急
-DAYS_TARGET = 60   # 「◯日持たせるには」の目標日数
+# 「◯日持たせるには」の目標日数は stock_alert_labels.HINT_TARGET_DAYS (=14)
 
 REF_RE = re.compile(r"'([^']+)'!\$(\d+):\$(\d+)")
 
@@ -104,6 +123,7 @@ DATA_BG = WHITE
 CF_RED = {"red": 0.95686275, "green": 0.8, "blue": 0.8}          # #f4cccc
 CF_ORANGE = {"red": 0.9882353, "green": 0.8980392, "blue": 0.8039216}  # #fce5cd
 CF_YELLOW = {"red": 1, "green": 0.9490196, "blue": 0.8}          # #fff2cc
+CF_COLORS = {"red": CF_RED, "orange": CF_ORANGE, "yellow": CF_YELLOW}
 
 COL_WIDTH_ALERT = 130
 COL_WIDTH_HINT = 250
@@ -249,21 +269,28 @@ def build_alert_formula(cols: dict, r: int) -> str:
             f"-N(${cols['rsl']}{r})-N(${cols['sc']}{r})")
     pack = f"N(${cols['pack']}{r})"
     order = f"N(${cols['ordering']}{r})"
+    # 条件式は 2026-07-31 の変更でも一切いじっていない (表示文言のみ差し替え)
     return (
         f'=IFERROR('
         f'IF(NOT(ISNUMBER({days})),"",'
         f'IF({days}>{DAYS_ALERT},"",'
-        f'IF({days}<=0,"🔴 欠品中",'
-        f'IF(AND({hand}>={pack},{days}<={DAYS_URGENT}),"🟠 至急梱包",'
-        f'IF({hand}>={pack},"🟡 要梱包",'
-        f'IF(AND({order}>0,{days}<={DAYS_URGENT}),"🔴 セール停止推奨",'
-        f'IF({order}>0,"🟠 セール調整検討",'
-        f'"🔴 緊急・発注なし")))))))'
+        f'IF({days}<=0,"{A_OUT_OF_STOCK}",'
+        f'IF(AND({hand}>={pack},{days}<={DAYS_URGENT}),"{A_PACK_URGENT}",'
+        f'IF({hand}>={pack},"{A_PACK}",'
+        f'IF(AND({order}>0,{days}<={DAYS_URGENT}),"{A_SALE_STOP}",'
+        f'IF({order}>0,"{A_SALE_REDUCE}",'
+        f'"{A_ORDER_NOW}")))))))'
         f',"")')
 
 
 def build_hint_formula(cols: dict, r: int, tab: str, wk7: int, wavg: int) -> str:
-    """調整の目安の数式。"""
+    """調整の目安の数式。
+
+    「このまま◯日 ／ 停止で◯日 ／ 14日持たせるには◯個/日」
+      このまま = FBA残り日数 (C列) をそのまま
+      停止で   = FBA在庫数 ÷ 抑制ペース (切り捨て)
+      14日     = HINT_TARGET_DAYS
+    """
     t = f"'{tab}'"
 
     def at(row: int) -> str:
@@ -271,13 +298,15 @@ def build_hint_formula(cols: dict, r: int, tab: str, wk7: int, wavg: int) -> str
 
     pace = f"MAX({at(wk7)},{at(wavg)})"
     fba = f"N(${cols['fba']}{r})"
+    days = f"${cols['days']}{r}"
     alert = f"${cols['alert']}{r}"
     return (
         f'=IFERROR(IF({alert}="","",'
-        f'IF({pace}<=0,"セール停止で在庫維持可",'
-        f'"セール停止で"&ROUND({fba}/{pace},0)&"日")'
-        f'&" ／ {DAYS_TARGET}日持たせるには"'
-        f'&TEXT(ROUND({fba}/{DAYS_TARGET},1),"0.0")&"個/日以下"),"")')
+        f'"このまま"&TEXT(ROUND({days},0),"0")&"日 ／ "&'
+        f'IF({pace}<=0,"停止で在庫維持可",'
+        f'"停止で"&ROUNDDOWN({fba}/{pace},0)&"日")'
+        f'&" ／ {HINT_TARGET_DAYS}日持たせるには"'
+        f'&TEXT(ROUND({fba}/{HINT_TARGET_DAYS},1),"0.0")&"個/日"),"")')
 
 
 def main() -> int:
@@ -518,15 +547,18 @@ def main() -> int:
                    "startColumnIndex": insert_at,
                    "endColumnIndex": insert_at + 1}
 
-    # 既に同じ範囲・同じ条件のルールがあれば張り直さない (再実行の重複防止)
+    # 既存の在庫警告ルール (旧: 🔴🟠🟡 / 新: 文言) を消してから張り直す。
+    # 旧ルールは絵文字を判定していたため、新文言には一致せず色が付かなくなる。
     existing = cf_ranges(sp, sheet_id)
+    ours_values = set(LEGACY_MATCH_TEXTS) | {s[1] for s in ALERT_SPECS}
+
     def is_ours(rule: dict) -> bool:
         br = rule.get("booleanRule", {})
         cond = br.get("condition", {})
         if cond.get("type") != "TEXT_CONTAINS":
             return False
         vals = [v.get("userEnteredValue") for v in cond.get("values", [])]
-        return any(v in ("🔴", "🟠", "🟡") for v in vals)
+        return any(v in ours_values for v in vals)
 
     del_reqs = [{"deleteConditionalFormatRule": {"sheetId": sheet_id, "index": i}}
                 for i, r in reversed(list(enumerate(existing))) if is_ours(r)]
@@ -534,17 +566,21 @@ def main() -> int:
         sheets_retry(sp.batch_update, {"requests": del_reqs})
         print(f"既存の在庫警告ルール {len(del_reqs)}件を削除しました")
 
+    # 判定文字列は絵文字を含めない (日本語部分で一致させる)。
+    # どれも他の文言の部分文字列ではないので、評価順に依存しない。
     cf_reqs = []
-    for mark, bg in (("🔴", CF_RED), ("🟠", CF_ORANGE), ("🟡", CF_YELLOW)):
+    for disp, match, color, _sev in ALERT_SPECS:
+        bg = CF_COLORS[color]
         cf_reqs.append({"addConditionalFormatRule": {
             "index": 0,
             "rule": {
                 "ranges": [alert_range],
                 "booleanRule": {
                     "condition": {"type": "TEXT_CONTAINS",
-                                  "values": [{"userEnteredValue": mark}]},
+                                  "values": [{"userEnteredValue": match}]},
                     "format": {"backgroundColor": bg,
                                "backgroundColorStyle": {"rgbColor": bg}}}}}})
+        print(f"  {disp} → {color} (TEXT_CONTAINS {match!r})")
     sheets_retry(sp.batch_update, {"requests": cf_reqs})
     print(f"条件付き書式 {len(cf_reqs)}件を設定しました "
           f"(範囲: {cols['alert']}2:{cols['alert']}{last_row})")
