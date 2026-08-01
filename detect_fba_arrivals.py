@@ -158,13 +158,20 @@ def fetch_amazon_inbound(settings: Settings) -> Tuple[Dict[str, int], List[str]]
                         f"アカウントの商品は判定しません: {e}")
             continue
         ok += 1
+        # 同一アカウント内では、同じASINが複数SKUで返ることがある
+        # (旧SKUが残っている等)。FBA在庫はASIN単位で管理されるため
+        # それらは同じ在庫を指しており、足すと二重計上になる → 最大値を採る。
+        # アカウントをまたぐ場合は別々の在庫なので、そのあと合算する。
+        per_acc: Dict[str, int] = {}
         for it in items:
             if not it.asin:
                 continue
             n = (it.inbound_working_quantity
                  + it.inbound_shipped_quantity
                  + it.inbound_receiving_quantity)
-            inbound[it.asin] = inbound.get(it.asin, 0) + n
+            per_acc[it.asin] = max(per_acc.get(it.asin, 0), n)
+        for asin, n in per_acc.items():
+            inbound[asin] = inbound.get(asin, 0) + n
     if ok == 0:
         raise RuntimeError("全Amazonアカウントで在庫取得に失敗しました。"
                            "誤検知を防ぐため中止します。")
