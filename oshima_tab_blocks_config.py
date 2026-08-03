@@ -107,7 +107,7 @@ OSHIMA_TAB_BLOCKS: dict[str, list[dict]] = {
     "PG-01": [
         {"code": "pg-01s", "asin": "B0GXDTV4SN", "asin_row": 1, "code_row": 3, "sales_row": 10, "stock_row": 26, "rakuten_sales_row": 16, "rsl_stock_row": 28, "yahoo_sales_row": 22, "stock_crew_stock_row": 30, "change_qty_row": 46, "from_row": 47, "to_row": 48, "fba_naganuma_row": 25, "rsl_naganuma_row": 27, "sc_naganuma_row": 29, "total_naganuma_row": 44},
         {"code": "pg-01ml", "asin": "B0GXDMXSZ4", "asin_row": 63, "code_row": 64, "sales_row": 71, "stock_row": 87, "rakuten_sales_row": 77, "rsl_stock_row": 89, "yahoo_sales_row": 83, "stock_crew_stock_row": 91, "change_qty_row": 107, "from_row": 108, "to_row": 109, "fba_naganuma_row": 86, "rsl_naganuma_row": 88, "sc_naganuma_row": 90, "total_naganuma_row": 105},
-        {"code": "pg-01xl", "asin": "B0GXDPF1VK", "asin_row": 124, "code_row": 125, "sales_row": 132, "stock_row": 148, "rakuten_sales_row": 138, "rsl_stock_row": 150, "yahoo_sales_row": 144, "stock_crew_stock_row": 152, "change_qty_row": 168, "from_row": 169, "to_row": 170, "fba_naganuma_row": 147, "rsl_naganuma_row": 149, "sc_naganuma_row": 151, "total_naganuma_row": 166},
+        {"code": "pg-01xl", "asin": "B0H3H523TB", "asin_row": 124, "code_row": 125, "sales_row": 132, "stock_row": 148, "rakuten_sales_row": 138, "rsl_stock_row": 150, "yahoo_sales_row": 144, "stock_crew_stock_row": 152, "change_qty_row": 168, "from_row": 169, "to_row": 170, "fba_naganuma_row": 147, "rsl_naganuma_row": 149, "sc_naganuma_row": 151, "total_naganuma_row": 166},
     ],
 }
 
