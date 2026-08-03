@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>在庫移動の記録ルール</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  body {
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
+    font-size: 10.5pt; line-height: 1.65; color: #1a1a1a; margin: 0;
+  }
+  h1 {
+    font-size: 20pt; margin: 0 0 4px; padding-bottom: 8px;
+    border-bottom: 3px solid #2c5aa0; color: #2c5aa0;
+  }
+  .lead { font-size: 10pt; color: #444; margin: 8px 0 18px; }
+  .lead strong { color: #c0392b; }
+  h2 {
+    font-size: 14pt; margin: 22px 0 10px; padding: 7px 12px;
+    background: #2c5aa0; color: #fff; border-radius: 4px;
+  }
+  h3 {
+    font-size: 11.5pt; margin: 16px 0 8px; padding-left: 9px;
+    border-left: 4px solid #2c5aa0; color: #2c5aa0;
+  }
+  h4 { font-size: 10.5pt; margin: 12px 0 6px; color: #333; }
+  table {
+    width: 100%; border-collapse: collapse; margin: 8px 0 14px;
+    font-size: 9.5pt; page-break-inside: avoid;
+  }
+  th, td { border: 1px solid #c8c8c8; padding: 5px 8px; text-align: left;
+           vertical-align: top; }
+  th { background: #eef2f8; font-weight: 600; }
+  td.c { text-align: center; }
+  .auto { color: #1e7a3c; font-weight: 600; }
+  .staff { color: #c0392b; font-weight: 600; }
+  .no { color: #999; }
+  .note {
+    background: #fff8e1; border-left: 4px solid #f0ad4e;
+    padding: 9px 13px; margin: 10px 0; font-size: 9.5pt;
+  }
+  .warn {
+    background: #fdecea; border-left: 4px solid #c0392b;
+    padding: 9px 13px; margin: 10px 0; font-size: 9.5pt;
+  }
+  .ok {
+    background: #e8f5e9; border-left: 4px solid #1e7a3c;
+    padding: 9px 13px; margin: 10px 0; font-size: 10.5pt; font-weight: 600;
+  }
+  .arrow { color: #1e7a3c; font-weight: 600; margin: 6px 0 14px; font-size: 10pt; }
+  ul { margin: 6px 0 12px; padding-left: 20px; }
+  li { margin: 3px 0; }
+  .pb { page-break-before: always; }
+  .kv td:first-child { width: 30%; background: #f7f9fc; font-weight: 600; }
+  .cols3 td:first-child { width: 26%; }
+  .em { background: #fffbe6; }
+  .small { font-size: 9pt; color: #555; }
+  .quick td:nth-child(1) { width: 24%; }
+  .quick td:nth-child(2) { width: 13%; }
+  .quick td:nth-child(3) { width: 22%; }
+</style>
+</head>
+<body>
+
+<h1>在庫移動の記録ルール</h1>
+<p class="lead">
+記入するのは「<strong>発注と在庫移動一覧</strong>」シートだけです。<br>
+商品タブ（TG-01(在庫)、マウスピース(在庫)など）には書かないでください。
+</p>
+
+<h3>まず覚えていただきたいこと</h3>
+<table class="kv">
+<tr><td>書く場所</td><td>「発注と在庫移動一覧」シートの<strong>一番下の行</strong></td></tr>
+<tr><td>反映まで</td><td><strong>10分以内</strong>に自動で商品タブへ反映されます</td></tr>
+<tr><td>入力する項目</td><td>移動日・商品SKU・移動元・移動先・個数・状態（＋到着時は今到着個数・最後到着日付）</td></tr>
+<tr><td>触ってはいけない項目</td><td><strong>データ更新・データ日付・到着個数/発送個数・納品内容・運送時間</strong> — 自動計算されます</td></tr>
+<tr><td>入力位置への移動</td><td>A列をクリックして <strong>⌘ + ↓</strong> → <strong>↓</strong> で最終行の次に飛べます</td></tr>
+</table>
+
+<h2>1. どこがAPI連携されているか</h2>
+<table>
+<tr><th>場所</th><th>在庫数の取得</th><th>到着の検知</th></tr>
+<tr><td><strong>FBA（Amazon）</strong></td><td class="c auto">毎朝 自動</td><td class="c auto">完全自動</td></tr>
+<tr><td>RSL（楽天）</td><td class="c auto">毎朝 自動</td><td class="c staff">スタッフが記入</td></tr>
+<tr><td>Stock Crew（Yahoo）</td><td class="c auto">毎朝 自動</td><td class="c staff">スタッフが記入</td></tr>
+<tr><td>イーウーパスポート　中国</td><td class="c no">なし（記録から計算）</td><td class="c staff">スタッフが記入</td></tr>
+<tr><td>荒瀬倉庫（amazon用／以外）</td><td class="c no">なし（記録から計算）</td><td class="c staff">スタッフが記入</td></tr>
+<tr><td>事務所（amazon用／以外）</td><td class="c no">なし（記録から計算）</td><td class="c staff">スタッフが記入</td></tr>
+<tr><td>発注中・輸送中</td><td class="c no">なし（記録から計算）</td><td class="c no">—</td></tr>
+</table>
+<p class="small"><strong>到着が完全自動なのはFBAだけ</strong>です。Amazonが「いま何個が入荷作業中か」をデータで教えてくれるためです。分納（500個が100個ずつ届く）もそのまま追えます。</p>
+<div class="warn">
+イーウーパスポート・荒瀬倉庫・事務所には在庫を確認する仕組みがありません。記録から計算しているだけなので、<strong>書き漏らすと在庫が合わなくなります</strong>。
+</div>
+
+<h2>2.「発注と在庫移動一覧」シートの列</h2>
+<table>
+<tr><th style="width:8%">列</th><th style="width:42%">項目</th><th>誰が入力</th></tr>
+<tr><td class="c">A</td><td>移動日</td><td class="staff">スタッフ</td></tr>
+<tr><td class="c">B</td><td>商品SKU</td><td class="staff">スタッフ（プルダウン）</td></tr>
+<tr><td class="c">C</td><td>移動元</td><td class="staff">スタッフ（プルダウン）</td></tr>
+<tr><td class="c">D</td><td>移動先</td><td class="staff">スタッフ（プルダウン）</td></tr>
+<tr><td class="c">E</td><td>個数</td><td class="staff">スタッフ</td></tr>
+<tr><td class="c">F</td><td>追跡番号</td><td class="no">任意</td></tr>
+<tr><td class="c">G</td><td>梱包完成予定日</td><td class="no">任意</td></tr>
+<tr><td class="c">H</td><td>到着予定日</td><td class="no">任意</td></tr>
+<tr><td class="c">I</td><td>状態</td><td class="staff">スタッフ（プルダウン）</td></tr>
+<tr><td class="c">J</td><td>備考欄</td><td class="no">任意</td></tr>
+<tr><td class="c">K</td><td>データ更新</td><td class="auto">自動</td></tr>
+<tr><td class="c">L</td><td>データ日付</td><td class="auto">自動</td></tr>
+<tr><td class="c">M</td><td>到着個数/発送個数</td><td class="auto">自動</td></tr>
+<tr class="em"><td class="c">N</td><td>今到着個数</td><td class="staff">スタッフ（FBAは自動）</td></tr>
+<tr class="em"><td class="c">O</td><td>最後到着日付</td><td class="staff">スタッフ（FBAは自動）</td></tr>
+<tr><td class="c">P</td><td>データ更新</td><td class="auto">自動</td></tr>
+<tr><td class="c">Q</td><td>データ日付</td><td class="auto">自動</td></tr>
+<tr><td class="c">R</td><td>納品内容</td><td class="auto">自動</td></tr>
+<tr><td class="c">S</td><td>運送時間</td><td class="auto">自動</td></tr>
+</table>
+<div class="warn">K・L・M・P・Q・R・S列は触らないでください。自動計算が壊れます。</div>
+
+<div class="pb"></div>
+<h2>【1】発注したとき</h2>
+<h3>発注した</h3>
+<p><span class="staff">スタッフが「発注と在庫移動一覧」に新しい行を1行記入</span></p>
+<table class="cols3">
+<tr><th>項目</th><th>入れるもの</th></tr>
+<tr><td>移動日</td><td>発注日</td></tr>
+<tr><td>商品SKU</td><td>商品を選ぶ</td></tr>
+<tr class="em"><td>移動元</td><td><strong>空欄のまま</strong></td></tr>
+<tr class="em"><td>移動先</td><td><strong>空欄のまま</strong></td></tr>
+<tr><td>個数</td><td>発注数</td></tr>
+<tr class="em"><td>状態</td><td><strong>発注中</strong></td></tr>
+</table>
+<p class="arrow">→ 自動で「発注中」の在庫が増えます</p>
+
+<h2>【2】発注品が中国に納品されたとき</h2>
+<h3>工場からイーウーパスポートに届いた</h3>
+<p><span class="staff">スタッフが「発注と在庫移動一覧」に新しい行を1行記入</span></p>
+<table class="cols3">
+<tr><th>項目</th><th>入れるもの</th></tr>
+<tr><td>移動日</td><td>届いた日</td></tr>
+<tr><td>商品SKU</td><td>商品を選ぶ</td></tr>
+<tr class="em"><td>移動元</td><td><strong>中国工場</strong></td></tr>
+<tr class="em"><td>移動先</td><td><strong>イーウーパスポート　中国</strong></td></tr>
+<tr><td>個数</td><td><strong>今回届いた数</strong></td></tr>
+<tr class="em"><td>状態</td><td><strong>到着</strong></td></tr>
+</table>
+<p class="arrow">→ 自動で「発注中」が減り、「中国在庫」が増えます</p>
+<div class="note">
+<strong>分納のときは、届くたびに新しい行を書いてください。</strong><br>
+例：1,000個発注 → 300個・500個・200個と届いたら <strong>3行</strong>
+</div>
+
+<h2>【3】発送したとき</h2>
+<p>発送はすべて同じ書き方です。送り先が何であっても、新しい行を1行書きます。</p>
+<p><span class="staff">スタッフが「発注と在庫移動一覧」に新しい行を1行記入</span></p>
+<table class="cols3">
+<tr><th>項目</th><th>入れるもの</th></tr>
+<tr><td>移動日</td><td>発送日</td></tr>
+<tr><td>商品SKU</td><td>商品を選ぶ</td></tr>
+<tr class="em"><td>移動元</td><td>送り出した場所</td></tr>
+<tr class="em"><td>移動先</td><td>送り先</td></tr>
+<tr><td>個数</td><td>発送数</td></tr>
+<tr class="em"><td>状態</td><td><strong>輸送中</strong></td></tr>
+</table>
+<p class="arrow">→ 自動で、送り出した場所の在庫が減り「輸送中」になります</p>
+
+<h4>よくある組み合わせ</h4>
+<table>
+<tr><th style="width:50%">移動元</th><th>移動先</th></tr>
+<tr><td>イーウーパスポート　中国</td><td>FBA</td></tr>
+<tr><td>イーウーパスポート　中国</td><td>荒瀬倉庫 amazon用</td></tr>
+<tr><td>荒瀬倉庫 amazon用</td><td>FBA</td></tr>
+<tr><td>荒瀬倉庫 amazon用</td><td>事務所 amazon用</td></tr>
+<tr><td>事務所 amazon用</td><td>RSL</td></tr>
+</table>
+
+<div class="pb"></div>
+<h2>【4】発送したものが到着したとき</h2>
+<p>ここだけ、到着先によって作業が変わります。</p>
+
+<h3>4-1. FBA（Amazon）に届いた</h3>
+<div class="ok">何もしなくてOKです</div>
+<p>Amazonから自動で入荷情報を取得して処理します。<strong>分納で何回に分かれて届いても自動</strong>です。</p>
+
+<h3>4-2. FBA以外に届いた</h3>
+<p>対象：RSL・Stock Crew・荒瀬倉庫・事務所・イーウーパスポート中国</p>
+<p><span class="staff">スタッフが「発注と在庫移動一覧」の、発送したときの行（【3】で書いた行）に追記します。新しい行は作りません。</span></p>
+<table class="cols3">
+<tr><th>項目</th><th>入れるもの</th></tr>
+<tr class="em"><td>今到着個数</td><td>届いた<strong>累計</strong>の数</td></tr>
+<tr class="em"><td>最後到着日付</td><td>最後に届いた日</td></tr>
+</table>
+<p class="arrow">→ 自動で「輸送中」が減り、到着先の在庫が増えます</p>
+<div class="note">
+<strong>分納のときは、同じ行の「今到着個数」を書き換えてください。</strong><br>
+例：500個送って200個届いた → <strong>200</strong> と記入<br>
+　　さらに300個届いた → <strong>500</strong> に書き換え（合計を書きます）<br>
+全部届くと、状態が自動で「到着」に変わります。
+</div>
+
+<div class="pb"></div>
+<h2>【5】数が合わないとき（ずれ修正）</h2>
+<p>検品で不良品が出た、棚卸で数が違った、発注より多く届いた——こういう「移動ではないけれど数が変わる」ときの書き方です。</p>
+<p><span class="staff">スタッフが「発注と在庫移動一覧」に新しい行を1行記入</span></p>
+
+<h3>5-1. 数を減らすとき（不良品・棚卸で少なかった）</h3>
+<table class="cols3">
+<tr><th>項目</th><th>入れるもの</th></tr>
+<tr><td>移動日</td><td>気づいた日</td></tr>
+<tr><td>商品SKU</td><td>商品を選ぶ</td></tr>
+<tr class="em"><td>移動元</td><td><strong>減らす場所</strong>を選ぶ</td></tr>
+<tr class="em"><td>移動先</td><td><strong>空欄のまま</strong></td></tr>
+<tr><td>個数</td><td>減らす数（マイナスは付けません）</td></tr>
+<tr class="em"><td>状態</td><td><strong>到着</strong></td></tr>
+<tr class="em"><td>備考欄</td><td>理由を書く（例：不良品）</td></tr>
+</table>
+<p class="arrow">→ その場所の在庫だけが減ります。どこにも移動しません</p>
+
+<h3>5-2. 数を増やすとき（多く届いた・棚卸で多かった）</h3>
+<table class="cols3">
+<tr><th>項目</th><th>入れるもの</th></tr>
+<tr class="em"><td>移動元</td><td><strong>空欄のまま</strong></td></tr>
+<tr class="em"><td>移動先</td><td><strong>増やす場所</strong>を選ぶ</td></tr>
+<tr><td>個数</td><td>増やす数</td></tr>
+<tr class="em"><td>状態</td><td><strong>到着</strong></td></tr>
+<tr class="em"><td>備考欄</td><td>理由を書く（例：ずれ修正）</td></tr>
+</table>
+<p class="arrow">→ その場所の在庫だけが増えます</p>
+
+<div class="note">
+<strong>覚え方：片方だけ書いて、状態は「到着」。</strong><br>
+移動元だけ書く → <strong>減る</strong>／移動先だけ書く → <strong>増える</strong><br>
+備考欄に書いた理由は、そのまま商品タブのセルのメモに残ります。<br>
+到着個数・最後到着日付は<strong>書きません</strong>（1行で終わりです）。
+</div>
+
+<div class="warn">
+両方とも空欄にすると<strong>発注</strong>の扱いになります。ずれ修正のときは、必ずどちらか片方を選んでください。
+</div>
+
+<h2>早見表</h2>
+<table class="quick">
+<tr><th>場面</th><th>誰が</th><th>どのシートに</th><th>何をする</th></tr>
+<tr>
+  <td>発注した</td><td class="staff">スタッフ</td><td>発注と在庫移動一覧</td>
+  <td>新しい行<br>移動元・移動先は空欄<br>状態＝発注中</td>
+</tr>
+<tr>
+  <td>工場→イーウーに届いた</td><td class="staff">スタッフ</td><td>発注と在庫移動一覧</td>
+  <td>新しい行<br>中国工場→イーウーパスポート<br>状態＝到着<br><strong>届くたびに1行</strong></td>
+</tr>
+<tr>
+  <td>発送した（すべて）</td><td class="staff">スタッフ</td><td>発注と在庫移動一覧</td>
+  <td>新しい行<br>移動元・移動先を選ぶ<br>状態＝輸送中</td>
+</tr>
+<tr class="em">
+  <td>FBAに届いた</td><td class="auto">自動</td><td>—</td>
+  <td><strong>作業なし</strong></td>
+</tr>
+<tr>
+  <td>FBA以外に届いた</td><td class="staff">スタッフ</td><td>発注と在庫移動一覧</td>
+  <td>発送した行に追記<br>今到着個数<br>最後到着日付</td>
+</tr>
+<tr class="em">
+  <td>数が合わない<br>（不良品・棚卸差異）</td><td class="staff">スタッフ</td><td>発注と在庫移動一覧</td>
+  <td>新しい行<br><strong>移動元だけ書くと減る</strong><br><strong>移動先だけ書くと増える</strong><br>状態＝到着／備考欄に理由</td>
+</tr>
+<tr>
+  <td>商品タブへの反映</td><td class="auto">自動</td><td>—</td>
+  <td>作業なし<br>10分以内</td>
+</tr>
+<tr>
+  <td>在庫数の取得</td><td class="auto">自動</td><td>—</td>
+  <td>作業なし<br>毎朝</td>
+</tr>
+</table>
+
+<h2>参考：選べる項目</h2>
+<h4>移動元・移動先（12種類）</h4>
+<p>イーウーパスポート　中国／中国工場／事務所 amazon用／事務所 amazon以外／荒瀬倉庫 amazon用／荒瀬倉庫 amazon以外／FBA／RSL／Stock Crew／武智商店／就労支援所／アールステージ</p>
+<h4>状態（3種類）</h4>
+<p>発注中／輸送中／到着</p>
+<div class="warn">
+就労支援所・アールステージは、商品タブに対応する在庫欄がないため、<strong>在庫計算に反映されません</strong>。
+</div>
+
+<h2>注意：やってはいけないこと</h2>
+<ul>
+<li>商品タブ（TG-01(在庫)など）に直接書く → 二重計上になります</li>
+<li><strong>データ更新・データ日付</strong>の欄を触る → 自動計算が壊れます</li>
+<li>951行目より前の行を編集する → 過去の記録です</li>
+<li>記入済みの行の「移動日・個数」を後から変える → ズレの原因になります（訂正は【5】ずれ修正の新しい行で）</li>
+<li>ずれ修正の行に「今到着個数・最後到着日付」を書く → 1行で完結するので不要です</li>
+</ul>
+
+</body>
+</html>
