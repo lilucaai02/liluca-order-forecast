@@ -6,8 +6,8 @@
 cd /Users/aililuca/amazon || exit 1
 
 # TG-01l は発注中と工場入荷が100個合わないため保留中 (原因確認待ち)
-# gc-02rainbow-35 の 987行目は手入力済みのため除外
-SKIP="--skip-row 953 --skip-row 964 --skip-row 972 --skip-row 980 --skip-row 987"
+# 987行目(gc-02rainbow-35)は 2026-08-03 に転記完了したため除外をやめた
+SKIP="--skip-row 953 --skip-row 964 --skip-row 972 --skip-row 980"
 
 echo "===== $(date '+%Y-%m-%d %H:%M:%S') ====="
 /usr/bin/python3 detect_fba_arrivals.py

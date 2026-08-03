@@ -27,6 +27,11 @@
        生産完了を意味する。発注中から中国倉庫へ移すだけで輸送段階は挟まない。
        K未チェック                     → A列の日に  E個 / FROM=発注中     / TO=中国
        ※1本の記録で完結するため P (到着) 側の処理は行わない。
+  B3. 数量調整 (移動元か移動先の片方だけ + 状態=到着)
+       ずれ修正・不良品・棚卸差異など。輸送を伴わず1本で完結する。
+       移動元が空欄 → A列の日に E個 / FROM=(空) / TO=map(移動先)   その拠点に足す
+       移動先が空欄 → A列の日に E個 / FROM=map(移動元) / TO=(空)   その拠点から引く
+       備考欄(J列)の内容はセルメモに転記する。
   C. 日付衝突: 当日→翌日→前日→翌々日→前々日… の順に空き列を探す (±14日)
   D. メモ: 数量・FROM・TO の3セルすべてに同一メモを付ける
   E. 到着日の自動推定はしない。N列(今到着個数)・O列(最後到着日付) が
@@ -106,6 +111,9 @@ UNSUPPORTED_LOCATIONS = {"就労支援所", "アールステージ"}
 # 意味なので、商品タブでは「発注中 → 中国」の1本で記録する (輸送段階なし)。
 FACTORY_SOURCE = "中国工場"
 FACTORY_DEST = "中国"
+
+# 一覧の状態(I列)。数量調整の行はこの状態で書いてもらう。
+STATE_ARRIVED = "到着"
 
 # 一覧の移動元/移動先 → 商品タブの FROM/TO 値。キーは norm() 済み。
 LOCATION_MAP_RAW = {
@@ -255,6 +263,8 @@ class Task:
             body = f"（発注中の記録。到着後に {self.journey_to} へ計上されます）"
         elif self.kind == "factory_in":
             body = "（工場からの入荷）"
+        elif self.kind == "adjust":
+            body = "（数量のずれを直す記録。移動ではありません）"
         else:
             body = f"（輸送中から {self.journey_to} への到着記録）"
         lines = [head, body]
@@ -316,9 +326,15 @@ def build_tasks(list_row: int, row: List[Any],
     dst, dst_err = map_location(dst_raw)
 
     tasks: List[Task] = []
-    is_order = is_blank(src_raw)
+    is_order = is_blank(src_raw) and is_blank(dst_raw)
     # 「中国工場」発 = 生産完了。発注中 → 中国 の1本で記録し輸送段階は挟まない。
     is_factory = norm(src_raw) == NORM_FACTORY
+    # ずれ修正・不良品などの数量調整。移動元か移動先の片方だけを書き、状態を
+    # 「到着」にした行。輸送を伴わないので1本の記録で完結する。
+    #   移動元が空欄 → その拠点に足す (検品で多かった等)
+    #   移動先が空欄 → その拠点から引く (不良品・棚卸差異等)
+    is_adjust = (norm(state) == norm(STATE_ARRIVED)
+                 and is_blank(src_raw) != is_blank(dst_raw))
 
     # --- 出発 / 発注 / 工場入荷 -------------------------------------------
     if not bool(flag_k):
@@ -331,6 +347,22 @@ def build_tasks(list_row: int, row: List[Any],
                 qty = None
             if not qty:
                 warn.append(f"{list_row}行目: 個数(E列)が数値でないため出発分をスキップ ({qty_raw!r})")
+            elif is_adjust:
+                # 数量調整。片方が空欄のまま FROM/TO を書くと、その分だけ
+                # 在庫が増減し、どこにも移動しない。
+                if src_err or dst_err:
+                    warn.append(f"{list_row}行目: 調整の拠点が転記できません — "
+                                f"{src_err or dst_err}")
+                else:
+                    place = dst or src
+                    sign = "＋" if dst else "−"
+                    memo = str(cell(10) or "").strip()      # J列 備考欄
+                    note = f"（数量調整: {place} を {sign}{qty}個）"
+                    if memo:
+                        note = f"（数量調整: {place} を {sign}{qty}個 ／ {memo}）"
+                    tasks.append(Task(list_row, "adjust", sku, tab, blk,
+                                      move_date, qty, src or "", dst or "",
+                                      src or "(調整)", dst or "(調整)", note))
             elif is_order:
                 # 移動元・移動先とも空欄 (状態=発注中) → FROM=空欄 / TO=発注中
                 if dst_err:
@@ -369,7 +401,11 @@ def build_tasks(list_row: int, row: List[Any],
                                   src, dst or "(未定)"))
 
     # --- 到着 (N列・O列が人手で埋まっている行だけ。自動推定はしない) ------
-    if is_factory:
+    if is_adjust:
+        if not is_blank(arrive_qty_raw) or not is_blank(arrive_date_raw):
+            warn.append(f"{list_row}行目: 数量調整の行は1本で完結するため、"
+                        f"N/O列があっても到着分は転記しません")
+    elif is_factory:
         if not is_blank(arrive_qty_raw) or not is_blank(arrive_date_raw):
             warn.append(f"{list_row}行目: 移動元が「{FACTORY_SOURCE}」の行は"
                         f"輸送段階が無いため、N/O列があっても到着分は転記しません")
@@ -750,7 +786,8 @@ def main() -> None:
 
     # --- 表示 -------------------------------------------------------------
     kind_ja = {"departure": "出発", "order": "発注",
-               "factory_in": "工場入荷", "arrival": "到着"}
+               "factory_in": "工場入荷", "arrival": "到着",
+               "adjust": "数量調整"}
     todo = [t for t in tasks if t.skip_reason is None]
     print(f"\n--- 転記内容 {len(todo)}件 / スキップ {len(tasks) - len(todo)}件 ---",
           file=sys.stderr)
@@ -817,7 +854,7 @@ def main() -> None:
         def cell(i: int) -> Any:
             return row_vals[i - 1] if len(row_vals) >= i else ""
 
-        if any(t.kind in ("departure", "order", "factory_in") for t in ts):
+        if any(t.kind in ("departure", "order", "factory_in", "adjust") for t in ts):
             list_reqs.append(update_cell_request(list_ws.id, list_row, 11, True, None))
             done_msgs.append(f"K{list_row} = TRUE")
         if any(t.kind == "arrival" for t in ts):
