@@ -19,10 +19,10 @@
 --- 転記ルール -------------------------------------------------------------
   A. 輸送を伴う移動 (移動元あり・中国工場以外)
        K未チェック                     → A列の日に  E個 / FROM=map(移動元) / TO=輸送中
-       P未チェック かつ N・O が埋まる  → O列の日に  N個 / FROM=輸送中     / TO=map(移動先)
+       P未チェック かつ N・O が埋まる  → O列の日に  (N−転記済み)個 / FROM=輸送中 / TO=map(移動先)
   B. 発注 (移動元・移動先とも空欄 / 状態=発注中)
        K未チェック                     → A列の日に  E個 / FROM=(空)       / TO=発注中
-       P未チェック かつ N・O が埋まる  → O列の日に  N個 / FROM=発注中     / TO=map(移動先)
+       P未チェック かつ N・O が埋まる  → O列の日に  (N−転記済み)個 / FROM=発注中 / TO=map(移動先)
   B2. 工場入荷 (移動元=中国工場 → 移動先=イーウーパスポート　中国)
        生産完了を意味する。発注中から中国倉庫へ移すだけで輸送段階は挟まない。
        K未チェック                     → A列の日に  E個 / FROM=発注中     / TO=中国
@@ -34,8 +34,10 @@
 
 --- 一覧への書き戻し -------------------------------------------------------
   出発／発注を転記 → K列 = TRUE のみ (L列は書かない)
-  到着を転記       → P列 = TRUE のみ (Q列は書かない)
-                     全量到着 (N>=E) なら I列を「到着」に変更
+  到着を転記       → N列のセルメモに「転記済み到着個数: n」を残す
+                     全量到着 (N>=E) のときだけ P列 = TRUE / I列 = 到着
+                     ※分納の途中で P を立てると残りが転記されなくなるため。
+                       N列は累計なので、次回はメモとの差分だけを転記する。
 
 --- 安全機構 ---------------------------------------------------------------
   1. ABSOLUTE_MIN_ROW (=952) より前の行は絶対に処理しない (コードに固定)
@@ -82,6 +84,10 @@ ABSOLUTE_MIN_ROW = 952
 
 DATE_SHIFT_LIMIT = 14   # 日付衝突時にずらす上限(日)
 DUP_WINDOW_DAYS = 7     # 重複チェックの前後日数
+
+# 分納の追跡用。N列(今到着個数)は累計なので、そのまま転記すると前回転記した
+# 分まで二重に入る。どこまで転記したかを N列のセルメモに残し、差分だけ書く。
+NOTE_PREFIX = "転記済み到着個数: "
 
 LOCK_PATH = os.path.join(tempfile.gettempdir(), "transfer_movement_log.lock")
 
@@ -261,10 +267,26 @@ class Task:
         return "\n".join(lines)
 
 
+def parse_transferred(note: Any) -> int:
+    """N列のセルメモから、これまでに転記した到着個数を読む。"""
+    s = str(note or "")
+    i = s.find(NOTE_PREFIX)
+    if i < 0:
+        return 0
+    digits = ""
+    for ch in s[i + len(NOTE_PREFIX):]:
+        if ch.isdigit():
+            digits += ch
+        else:
+            break
+    return int(digits) if digits else 0
+
+
 def build_tasks(list_row: int, row: List[Any],
                 index: Dict[str, Tuple[str, dict]],
                 warn: List[str],
-                exclude_skus: Optional[set] = None) -> List[Task]:
+                exclude_skus: Optional[set] = None,
+                transferred: int = 0) -> List[Task]:
     """一覧の1行から転記タスクを組み立てる。"""
     exclude_skus = exclude_skus or set()
     def cell(i: int) -> Any:
@@ -365,17 +387,25 @@ def build_tasks(list_row: int, row: List[Any],
             warn.append(f"{list_row}行目: 移動先が転記できません — {dst_err}")
         elif not dst:
             warn.append(f"{list_row}行目: 移動先(D列)が空欄のため到着分をスキップ")
+        elif arrive_qty - transferred <= 0:
+            pass    # 前回までに転記済み。増えていないので何もしない
         else:
             # 発注行は「発注中」から、輸送行は「輸送中」から出す
             from_val = "発注中" if is_order else "輸送中"
+            # N列は累計。前回転記した分を引いて、増えた分だけを書く。
+            delta = arrive_qty - transferred
             extra = ""
             try:
-                if int(qty_raw) > arrive_qty:
-                    extra = f"（分納: 発送{int(qty_raw)}個のうち{arrive_qty}個が到着）"
+                ship = int(qty_raw)
+                if transferred:
+                    extra = (f"（分納: 発送{ship}個のうち今回{delta}個が到着"
+                             f"／到着累計{arrive_qty}個）")
+                elif ship > arrive_qty:
+                    extra = f"（分納: 発送{ship}個のうち{arrive_qty}個が到着）"
             except (TypeError, ValueError):
                 pass
             tasks.append(Task(list_row, "arrival", sku, tab, blk,
-                              arrive_date, arrive_qty, from_val, dst,
+                              arrive_date, delta, from_val, dst,
                               from_val, dst, extra))
     return tasks
 
@@ -626,6 +656,16 @@ def main() -> None:
     rows = sheets_retry(list_ws.get, f"A{start_row}:S{end_row}",
                         value_render_option="UNFORMATTED_VALUE")
 
+    # N列のセルメモ (= これまでに転記した到着個数)。分納で二重に書かないため。
+    note_lo = min([start_row] + list(arrival_rows))
+    notes_raw = sheets_retry(list_ws.get_notes,
+                             grid_range=f"N{note_lo}:N{end_row}") or []
+    transferred: Dict[int, int] = {}
+    for k, nrow in enumerate(notes_raw):
+        v = parse_transferred(nrow[0] if nrow else "")
+        if v:
+            transferred[note_lo + k] = v
+
     index = build_block_index()
     warn: List[str] = []
     tasks: List[Task] = []
@@ -637,7 +677,8 @@ def main() -> None:
             warn.append(f"{list_row}行目: --skip-row 指定のため処理しません "
                         f"(K列にもチェックを入れません)")
             continue
-        tasks += build_tasks(list_row, list(row), index, warn, exclude_skus)
+        tasks += build_tasks(list_row, list(row), index, warn, exclude_skus,
+                             transferred.get(list_row, 0))
 
     # --- 例外: 951行目以前の「到着だけ」を転記する ------------------------
     # 出発分は人手で転記済み (K列=TRUE) なので、到着を入れないと商品タブの
@@ -652,7 +693,8 @@ def main() -> None:
                       f"指定してください (通常の範囲で処理されます)", file=sys.stderr)
                 sys.exit(1)
             raw = extra[n - lo] if n - lo < len(extra) else []
-            ts = build_tasks(n, list(raw), index, warn, exclude_skus)
+            ts = build_tasks(n, list(raw), index, warn, exclude_skus,
+                             transferred.get(n, 0))
             bad = [t for t in ts if t.kind != "arrival"]
             if bad:
                 print(f"エラー: {n}行目は到着以外の転記({bad[0].kind})が発生するため"
@@ -764,6 +806,7 @@ def main() -> None:
 
     # --- 一覧への書き戻し (K/P のみ。L・Q は ARRAYFORMULA なので触らない) --
     list_reqs: List[dict] = []
+    note_reqs: List[Tuple[int, str]] = []
     done_msgs: List[str] = []
     by_row: Dict[int, List[Task]] = {}
     for t in todo:
@@ -778,17 +821,36 @@ def main() -> None:
             list_reqs.append(update_cell_request(list_ws.id, list_row, 11, True, None))
             done_msgs.append(f"K{list_row} = TRUE")
         if any(t.kind == "arrival" for t in ts):
-            list_reqs.append(update_cell_request(list_ws.id, list_row, 16, True, None))
-            done_msgs.append(f"P{list_row} = TRUE")
+            # どこまで転記したかを N列のメモに残す。分納の残りが後日届いたとき、
+            # 差分だけを転記するために使う。
+            arrived = 0
             try:
-                if int(cell(14)) >= int(cell(5)):
-                    list_reqs.append(
-                        update_cell_request(list_ws.id, list_row, 9, "到着", None))
-                    done_msgs.append(f"I{list_row} = 到着")
+                arrived = int(cell(14))
             except (TypeError, ValueError):
                 pass
+            note_reqs.append((list_row, f"{NOTE_PREFIX}{arrived}"))
+            full = False
+            try:
+                full = int(cell(14)) >= int(cell(5))
+            except (TypeError, ValueError):
+                pass
+            # P(到着の転記済みフラグ)は全量届いたときだけ立てる。
+            # 分納の途中で立てると、残りが届いても転記されなくなる。
+            if full:
+                list_reqs.append(
+                    update_cell_request(list_ws.id, list_row, 16, True, None))
+                done_msgs.append(f"P{list_row} = TRUE")
+                list_reqs.append(
+                    update_cell_request(list_ws.id, list_row, 9, "到着", None))
+                done_msgs.append(f"I{list_row} = 到着")
+            else:
+                done_msgs.append(f"N{list_row}メモ = 転記済み{arrived}個 (分納継続)")
     if list_reqs:
         sheets_retry(sp.batch_update, {"requests": list_reqs})
+    if note_reqs:
+        sheets_retry(list_ws.update_notes,
+                     {f"N{r}": text for r, text in note_reqs})
+    if done_msgs:
         print(f"→ 一覧の書き戻し: {', '.join(done_msgs)}", file=sys.stderr)
 
     print(f"\n完了 → https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}")
