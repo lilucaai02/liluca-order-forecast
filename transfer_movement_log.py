@@ -574,10 +574,15 @@ def main() -> None:
                    help="この一覧行を処理しない (K列にもチェックを入れない)。複数指定可")
     p.add_argument("--exclude-sku", action="append", default=[], metavar="CODE",
                    help="このSKUの行を処理しない。複数指定可")
+    p.add_argument("--arrival-row", type=int, action="append", default=[],
+                   metavar="N",
+                   help=f"{ABSOLUTE_MIN_ROW}行目より前のこの行を、到着分だけ"
+                        f"例外的に転記する。出発分が1つでも出る行は中止する。複数指定可")
     args = p.parse_args()
 
     skip_rows = set(args.skip_row)
     exclude_skus = {norm(s) for s in args.exclude_sku}
+    arrival_rows = set(args.arrival_row)
 
     if args.row is not None:
         start_row = end_row = args.row
@@ -633,6 +638,31 @@ def main() -> None:
                         f"(K列にもチェックを入れません)")
             continue
         tasks += build_tasks(list_row, list(row), index, warn, exclude_skus)
+
+    # --- 例外: 951行目以前の「到着だけ」を転記する ------------------------
+    # 出発分は人手で転記済み (K列=TRUE) なので、到着を入れないと商品タブの
+    # 「輸送中」が永久に減らない。出発分が出る行は二重計上になるため中止する。
+    if arrival_rows:
+        lo, hi = min(arrival_rows), max(arrival_rows)
+        extra = sheets_retry(list_ws.get, f"A{lo}:S{hi}",
+                             value_render_option="UNFORMATTED_VALUE")
+        for n in sorted(arrival_rows):
+            if n >= ABSOLUTE_MIN_ROW:
+                print(f"エラー: --arrival-row {n} は {ABSOLUTE_MIN_ROW}行目より前を"
+                      f"指定してください (通常の範囲で処理されます)", file=sys.stderr)
+                sys.exit(1)
+            raw = extra[n - lo] if n - lo < len(extra) else []
+            ts = build_tasks(n, list(raw), index, warn, exclude_skus)
+            bad = [t for t in ts if t.kind != "arrival"]
+            if bad:
+                print(f"エラー: {n}行目は到着以外の転記({bad[0].kind})が発生するため"
+                      f"中止します。K列(データ更新)にチェックが入っているか"
+                      f"確認してください。", file=sys.stderr)
+                sys.exit(1)
+            if not ts:
+                warn.append(f"{n}行目: 転記できる到着分がありません "
+                            f"(N列・O列が未記入か、P列が既にTRUE)")
+            tasks += ts
 
     if not tasks:
         for w in warn:
