@@ -114,6 +114,9 @@ FACTORY_DEST = "中国"
 
 # 一覧の状態(I列)。数量調整の行はこの状態で書いてもらう。
 STATE_ARRIVED = "到着"
+# 商品タブ側の「輸送中」。一覧のプルダウンには無いので、輸送中のずれは
+# 移動元・移動先を空欄にして状態だけ「輸送中」と書いてもらう。
+TRANSIT = "輸送中"
 
 # 一覧の移動元/移動先 → 商品タブの FROM/TO 値。キーは norm() 済み。
 LOCATION_MAP_RAW = {
@@ -339,10 +342,20 @@ def build_tasks(list_row: int, row: List[Any],
                             and norm(dst_raw) == NORM_FACTORY
                             and not is_blank(src_raw)
                             and norm(src_raw) != NORM_FACTORY)
-    is_adjust = (norm(state) == norm(STATE_ARRIVED)
-                 and is_blank(src_raw) != is_blank(dst_raw)) or is_return_to_factory
+    # 輸送中そのもののずれ。一覧のプルダウンに「輸送中」が無いため、
+    # 移動元・移動先とも空欄のまま状態だけ「輸送中」と書いてもらう。
+    #   例: 発送80個のうち71個しか届かず、残り9個が輸送中に残り続ける
+    is_transit_adjust = (is_blank(src_raw) and is_blank(dst_raw)
+                         and norm(state) == norm(TRANSIT))
+    is_adjust = ((norm(state) == norm(STATE_ARRIVED)
+                  and is_blank(src_raw) != is_blank(dst_raw))
+                 or is_return_to_factory or is_transit_adjust)
     if is_return_to_factory:
         dst, dst_err = "", None       # 行き先なし = 在庫から消える扱い
+    if is_transit_adjust:
+        src, src_err = TRANSIT, None  # 輸送中から引く
+        dst, dst_err = "", None
+        is_order = False
 
     # --- 出発 / 発注 / 工場入荷 -------------------------------------------
     if not bool(flag_k):
