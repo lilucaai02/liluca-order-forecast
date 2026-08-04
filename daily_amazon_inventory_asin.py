@@ -74,15 +74,31 @@ def fetch_inventory_by_asin(settings: Settings):
                   f"既存値を保持): {e}", file=sys.stderr)
             failed_accounts.add(acc.name)
             continue
+        # 同じASINでも FNSKU が違えば別の在庫なので合算する。
+        # 逆に FNSKU が同じSKUは同じ在庫を指しており、足すと二重計上になる
+        # (例: tg-01l-short2 と tg-02l-black は同じ FNSKU で同じ249個)。
+        # そこで FNSKU ごとに1つだけ採ってから足す。
+        #
+        # 数える対象は「販売可能」だけでなく「移送中」「FC作業中」も含める。
+        # これらはAmazonが受領済みで、今は売れないだけの自社在庫。
+        # 除くのは「注文確定待ち」(出ていく分)・破損・調査中。
+        per_fn: Dict[tuple, int] = {}
         for item in items:
-            asin = item.asin
-            if not asin:
+            if not item.asin:
                 continue
-            key = (asin, acc.name)
-            qty_map[key] = qty_map.get(key, 0) + max(item.fulfillable_quantity, 0)
+            qty = (max(item.fulfillable_quantity, 0)
+                   + max(item.pending_transshipment_quantity, 0)
+                   + max(item.fc_processing_quantity, 0))
+            fn = item.fn_sku or f"sku:{item.seller_sku}"
+            k = (item.asin, acc.name, fn)
+            per_fn[k] = max(per_fn.get(k, 0), qty)
             if item.seller_sku:
-                sku_map.setdefault(key, []).append(item.seller_sku)
-        print(f"[Amazon:{acc.name}] {len(items)}件取得", file=sys.stderr)
+                sku_map.setdefault((item.asin, acc.name), []).append(item.seller_sku)
+        for (asin, acc_name, _fn), qty in per_fn.items():
+            key = (asin, acc_name)
+            qty_map[key] = qty_map.get(key, 0) + qty
+        print(f"[Amazon:{acc.name}] {len(items)}件取得 "
+              f"(FNSKU重複を除いて{len(per_fn)}件)", file=sys.stderr)
     return qty_map, sku_map, failed_accounts
 
 

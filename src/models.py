@@ -18,6 +18,9 @@ class InventoryItem(BaseModel):
     marketplace: str = "amazon"
     asin: str
     seller_sku: str
+    # Amazon内部の在庫識別子。同じASINでも fn_sku が違えば別の在庫。
+    # 逆に fn_sku が同じSKUは同じ在庫なので、足すと二重計上になる。
+    fn_sku: str = ""
     product_name: str = ""
     condition: str = "NewItem"
     fulfillable_quantity: int = 0
@@ -25,6 +28,11 @@ class InventoryItem(BaseModel):
     inbound_shipped_quantity: int = 0
     inbound_receiving_quantity: int = 0
     reserved_quantity: int = 0
+    # 予約の内訳。移送中とFC作業中は「Amazonにあるが今は売れない」だけで
+    # 自社の在庫。注文確定待ちは出ていく分なので在庫には数えない。
+    pending_transshipment_quantity: int = 0
+    fc_processing_quantity: int = 0
+    pending_customer_order_quantity: int = 0
     unfulfillable_quantity: int = 0
     total_quantity: int = 0
     last_updated: datetime = Field(default_factory=datetime.utcnow)

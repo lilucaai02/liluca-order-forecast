@@ -27,6 +27,7 @@ def fetch_inventory(
             account_name=account_name,
             asin=s.get("asin", ""),
             seller_sku=s.get("sellerSku", ""),
+            fn_sku=s.get("fnSku", ""),
             product_name=s.get("productName", ""),
             condition=s.get("condition", "NewItem"),
             fulfillable_quantity=detail.get("fulfillableQuantity", 0),
@@ -37,6 +38,18 @@ def fetch_inventory(
                 reserved.get("totalReservedQuantity", 0)
                 if isinstance(reserved, dict)
                 else 0
+            ),
+            pending_transshipment_quantity=(
+                reserved.get("pendingTransshipmentQuantity", 0)
+                if isinstance(reserved, dict) else 0
+            ),
+            fc_processing_quantity=(
+                reserved.get("fcProcessingQuantity", 0)
+                if isinstance(reserved, dict) else 0
+            ),
+            pending_customer_order_quantity=(
+                reserved.get("pendingCustomerOrderQuantity", 0)
+                if isinstance(reserved, dict) else 0
             ),
             unfulfillable_quantity=(
                 unfulfillable.get("totalUnfulfillableQuantity", 0)
