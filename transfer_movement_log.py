@@ -329,12 +329,20 @@ def build_tasks(list_row: int, row: List[Any],
     is_order = is_blank(src_raw) and is_blank(dst_raw)
     # 「中国工場」発 = 生産完了。発注中 → 中国 の1本で記録し輸送段階は挟まない。
     is_factory = norm(src_raw) == NORM_FACTORY
-    # ずれ修正・不良品などの数量調整。移動元か移動先の片方だけを書き、状態を
-    # 「到着」にした行。輸送を伴わないので1本の記録で完結する。
-    #   移動元が空欄 → その拠点に足す (検品で多かった等)
-    #   移動先が空欄 → その拠点から引く (不良品・棚卸差異等)
+    # ずれ修正・不良品などの数量調整。輸送を伴わないので1本の記録で完結する。
+    #   移動元が空欄        → その拠点に足す (検品で多かった等)
+    #   移動先が空欄        → その拠点から引く (不良品・棚卸差異等)
+    #   移動先が「中国工場」 → 工場へ返す = その拠点から引く
+    #     移動元が「中国工場」を工場入荷として扱うのと対称。現場が
+    #     「工場に戻した」と書きたくなるので、空欄と同じ意味で受け付ける。
+    is_return_to_factory = (norm(state) == norm(STATE_ARRIVED)
+                            and norm(dst_raw) == NORM_FACTORY
+                            and not is_blank(src_raw)
+                            and norm(src_raw) != NORM_FACTORY)
     is_adjust = (norm(state) == norm(STATE_ARRIVED)
-                 and is_blank(src_raw) != is_blank(dst_raw))
+                 and is_blank(src_raw) != is_blank(dst_raw)) or is_return_to_factory
+    if is_return_to_factory:
+        dst, dst_err = "", None       # 行き先なし = 在庫から消える扱い
 
     # --- 出発 / 発注 / 工場入荷 -------------------------------------------
     if not bool(flag_k):
@@ -640,6 +648,10 @@ def main() -> None:
                    help="この一覧行を処理しない (K列にもチェックを入れない)。複数指定可")
     p.add_argument("--exclude-sku", action="append", default=[], metavar="CODE",
                    help="このSKUの行を処理しない。複数指定可")
+    p.add_argument("--force-row", type=int, action="append", default=[],
+                   metavar="N",
+                   help="この行は重複チェックを飛ばして転記する。同じ数量・同じ"
+                        "経路の別便を、続けて発送したときに使う")
     p.add_argument("--arrival-row", type=int, action="append", default=[],
                    metavar="N",
                    help=f"{ABSOLUTE_MIN_ROW}行目より前のこの行を、到着分だけ"
@@ -649,6 +661,7 @@ def main() -> None:
     skip_rows = set(args.skip_row)
     exclude_skus = {norm(s) for s in args.exclude_sku}
     arrival_rows = set(args.arrival_row)
+    force_rows = set(args.force_row)
 
     if args.row is not None:
         start_row = end_row = args.row
@@ -769,7 +782,7 @@ def main() -> None:
                 warn.append(note)
             checked.add(key)
 
-        dup = find_duplicate(view, t.blk, t)
+        dup = None if t.list_row in force_rows else find_duplicate(view, t.blk, t)
         if dup:
             t.skip_reason = (f"重複の可能性: {fmt_date(dup[1])} "
                              f"({col_letter(dup[0])}列) に同じ "

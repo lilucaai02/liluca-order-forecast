@@ -92,6 +92,14 @@ INFLOW_MIN_QTY = 10
 # 記入済みの到着行が実測入庫を消し込める、到着日からの猶予日数
 CREDIT_SLACK_DAYS = 3
 
+# Amazonの「入荷中」は実際より多く出ることがある (受領作業の途中で数が
+# 揺れる・返品や在庫調整が混ざる等)。一覧の未到着より多いだけで判定を
+# 止めると、そのあいだ到着を検知できない。下の範囲内のはみ出しは
+# 「入荷中 = 未到着残高」とみなして先に進む。実測のFBA在庫と突き合わせる
+# 仕組みが別にあるので、これで誤検知が増えることはない。
+INBOUND_TOLERANCE_QTY = 20      # 個数での許容
+INBOUND_TOLERANCE_RATIO = 0.10  # 未到着残高に対する割合での許容
+
 LBL_FBA_STOCK = "FBA在庫実績"
 LBL_FBA_SALES = "amazonFBA販売実績"
 
@@ -411,20 +419,29 @@ def main() -> None:
         outstanding = sum(x["remain"] for x in lst)
         if outstanding <= 0:
             continue
-        inb = inbound.get(code, 0)
-        by_balance = outstanding - inb
+        inb_raw = inbound.get(code, 0)
         label = next((x["sku"] for x in lst if x["remain"] > 0), lst[0]["sku"])
 
+        # 入荷中のはみ出しが許容範囲なら、未到着残高と同じとみなして続ける
+        over = inb_raw - outstanding
+        tol = max(INBOUND_TOLERANCE_QTY, int(outstanding * INBOUND_TOLERANCE_RATIO))
+        inb = outstanding if 0 < over <= tol else inb_raw
+        if 0 < over <= tol:
+            warn.append(f"{label}: Amazonの入荷中({inb_raw})が一覧の未到着"
+                        f"({outstanding})より{over}個多いですが、誤差の範囲"
+                        f"({tol}個まで)として判定を続けます")
+        by_balance = outstanding - inb
+
         if by_balance <= 0:
-            report.append(f"  {label:22s} 未到着{outstanding:6d} / 入荷中{inb:6d}"
+            report.append(f"  {label:22s} 未到着{outstanding:6d} / 入荷中{inb_raw:6d}"
                           f" → まだ到着なし")
-            # 入荷中が記録より多い = 一覧に無い発送があるか、同一ASINが複数SKUで
-            # 出品されていて二重に数えている。誤検知はしないが到着を検知できない。
-            if inb > outstanding:
+            # 誤差の範囲を超えて多い = 一覧に無い発送があるか、記録がずれている。
+            # 誤検知はしないが到着を検知できない。
+            if over > tol:
                 warn.append(
-                    f"{label}: Amazonの入荷中({inb})が一覧の未到着({outstanding})を"
-                    f"上回っています。一覧に記録していない発送があるか、"
-                    f"同一商品が複数SKUで出品されている可能性があります。"
+                    f"{label}: Amazonの入荷中({inb_raw})が一覧の未到着({outstanding})を"
+                    f"{over}個上回っています(許容{tol}個)。一覧に記録していない発送が"
+                    f"あるか、記録がずれている可能性があります。"
                     f"この商品は到着を自動検知できません")
             continue
         if inb == 0 and code not in inbound:
