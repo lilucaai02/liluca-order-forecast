@@ -10,7 +10,8 @@
     発注個数     = カバー期間の需要合計 − 到着時点の在庫
 
 ■ それぞれの出どころ
-  基準日販   : 直近30日の全体の販売実績 ÷ 30 (実測)
+  基準日販   : 直近30日のうち「セール以外の日」の平均 (実測)
+               セール込みの平均を使うと、未来のイベント係数と二重になる
                前の30日と比べた増減も出す。最近伸びていれば発注も増える。
   季節係数   : タブごとに2025年の月別実績から算出 (7月=1.00)
                データが薄い月は 1.00 に倒す。
@@ -56,7 +57,8 @@ COVER_DAYS = 60       # 到着してから何日分を持たせるか
 REORDER_LEAD = 30     # 在庫切れの何日前に発注するか (リードタイムに上乗せ)
 SEASON_YEAR = 2025    # 季節係数を測る年
 SEASON_BASE_MONTH = 7 # この月を 1.00 とする
-MIN_DAYS_PER_MONTH = 20   # 季節係数を信用する最低日数(ブロック数×日数)
+MIN_DAYS_PER_MONTH = 15   # 季節係数を信用する最低の暦日数
+SEASON_MIN, SEASON_MAX = 0.4, 3.5   # 係数の上下限。極端な値は誤りとみなす
 
 # 最小ロット。ここに無い商品は10個単位で切り上げるだけ。
 MIN_LOT_RAW = {
@@ -68,7 +70,7 @@ LBL_EVENT = "アマゾンイベント"
 LBL_COEF = "アマゾンイベント係数"
 
 HEADERS = [
-    "商品", "発注個数", "現行の予測", "最小ロット", "いま発注するか",
+    "作成日", "商品", "発注個数", "現行の予測", "最小ロット", "いま発注するか",
     "到着日", "カバー期間", "到着時の在庫", "基準日販", "前30日比", "直近7日",
     "季節係数", "イベント", "イベント上乗せ", "期間の需要",
     "在庫が尽きる日", "次の発注日", "根拠",
@@ -164,29 +166,52 @@ class TabData:
         return arr[k] if k < len(arr) else None
 
     def _season_index(self) -> Dict[int, float]:
-        """タブ全体の月別指数 (SEASON_BASE_MONTH = 1.00)。"""
+        """タブ全体の月別指数 (SEASON_BASE_MONTH = 1.00)。
+
+        イベントが登録されている日は数えない。プライムデーやセールの山を
+        季節性として取り込むと、イベント係数と二重に効いてしまうため。
+        (グローブの7月がピークに見えるのはプライムデーと広告のせいで、
+         季節商品ではない、というのが現場の見立て)
+        """
         tot: Dict[int, float] = defaultdict(float)
-        cnt: Dict[int, int] = defaultdict(int)
+        cal: Dict[int, set] = defaultdict(set)
         for d in self.cols:
             if d.year != SEASON_YEAR or d >= self.today:
                 continue
+            got = False
             for code in self.series:
+                if self.event(code, d):        # セール・イベント日は除外
+                    continue
                 q = num(self.cell(code, LBL_SALES, d))
                 if q is None:
                     continue
                 tot[d.month] += q
-                cnt[d.month] += 1
-        avg = {m: tot[m] / cnt[m] for m in tot if cnt[m] >= MIN_DAYS_PER_MONTH}
+                got = True
+            if got:
+                cal[d.month].add(d)
+        # 実データのある「暦日」で割る。ブロック数で水増ししない。
+        avg = {m: tot[m] / len(cal[m]) for m in tot
+               if len(cal[m]) >= MIN_DAYS_PER_MONTH and tot[m] > 0}
         base = avg.get(SEASON_BASE_MONTH)
         if not base:
             return {}
-        return {m: v / base for m, v in avg.items()}
+        idx = {m: v / base for m, v in avg.items()}
+        # 極端な値は誤りの可能性が高い。安全側に丸める。
+        return {m: min(SEASON_MAX, max(SEASON_MIN, v)) for m, v in idx.items()}
 
-    def daily(self, code: str, frm: int, to: int) -> float:
-        """今日から frm〜to 日前の平均販売数。"""
+    def daily(self, code: str, frm: int, to: int, skip_event: bool = True) -> float:
+        """今日から frm〜to 日前の平均販売数。
+
+        既定ではセール日を除く。未来の需要は「基準日販 × イベント係数」で
+        積むので、基準側にセール日の山が入っていると二重に効いてしまう。
+        セール日を除いた平常時の実力を基準にし、上乗せはイベント係数に任せる。
+        """
         vals = []
         for i in range(frm, to + 1):
-            q = num(self.cell(code, LBL_SALES, self.today - datetime.timedelta(days=i)))
+            d = self.today - datetime.timedelta(days=i)
+            if skip_event and self.event(code, d):
+                continue
+            q = num(self.cell(code, LBL_SALES, d))
             if q is not None:
                 vals.append(q)
         return sum(vals) / len(vals) if vals else 0.0
@@ -289,7 +314,10 @@ def main() -> None:
         cur = num(d["発注個数予測"])
         if lt is None or so is None:
             continue
-        b30, prev30, b7 = td.daily(code, 1, 30), td.daily(code, 31, 60), td.daily(code, 1, 7)
+        # 基準はセール以外の日。イベント分は係数で上乗せするので二重に数えない。
+        b30, prev30 = td.daily(code, 1, 30), td.daily(code, 31, 60)
+        b7 = td.daily(code, 1, 7)
+        all30 = td.daily(code, 1, 30, skip_event=False)   # 表示用: セール込みの実績
         if b30 <= 0:
             continue
         rs = td.recent_season() or 1.0
@@ -355,74 +383,103 @@ def main() -> None:
             why.append("到着時の在庫で足りるため発注不要")
 
         out.append([
+            today.strftime("%Y/%m/%d"),
             d["name"], q, cur if cur is not None else "", lot or "",
             "発注する" if (od and od <= today) else (f"{od}まで待つ" if od else ""),
             arrive.strftime("%Y/%m/%d"),
             f"{arrive.strftime('%m/%d')}〜{(arrive + datetime.timedelta(days=args.cover - 1)).strftime('%m/%d')}",
-            f"{gap}日分", round(b30, 1), trend, round(b7, 1),
+            f"{gap}日分", f"{b30:.1f}（セール込み {all30:.1f}）", trend, round(b7, 1),
             season_txt, ev_txt, round(ev_add), round(total),
             end.strftime("%Y/%m/%d"), nxt.strftime("%Y/%m/%d"),
             "／".join(why) or "通常",
         ])
 
-    out.sort(key=lambda r: -(r[1] or 0))
-    print(f"\n対象 {len(out)}商品 / 発注合計 {sum(r[1] for r in out):,}個")
+    out.sort(key=lambda r: -(r[2] or 0))
+    print(f"\n対象 {len(out)}商品 / 発注合計 {sum(r[2] for r in out):,}個")
     if args.dry_run:
         for r in out[:12]:
-            print(f"  {r[0]:20s} {r[1]:>6,} (現行 {r[2]}) 次の発注 {r[16]}  {r[17]}")
+            print(f"  {r[1]:20s} {r[2]:>6,} (現行 {r[3]}) 次の発注 {r[17]}  {r[18]}")
         print("\n[dry-run] シートには書き込みませんでした")
         return
 
+    # --- 追記式。過去の計画は消さず、下に足していく -------------------------
+    new_sheet = False
     try:
         ws = sheets_retry(sp.worksheet, PLAN)
-        sheets_retry(ws.clear)
     except Exception:                                    # noqa: BLE001
         ws = sheets_retry(sp.add_worksheet, title=PLAN,
-                          rows=len(out) + 10, cols=len(HEADERS) + 2)
+                          rows=len(out) + 200, cols=len(HEADERS) + 2)
+        new_sheet = True
 
-    stamp = [[f"発注計画  作成日 {today}  "
-              f"（到着してから{args.cover}日分を持たせる前提／"
-              f"次の発注日＝在庫が尽きる日−リードタイム−{REORDER_LEAD}日）"]]
-    sheets_retry(ws.update, range_name="A1", values=stamp,
+    used = len(sheets_retry(ws.col_values, 1))
+    if new_sheet or used == 0:
+        sheets_retry(ws.update, range_name="A1",
+                     values=[[f"発注計画  到着してから{args.cover}日分を持たせる前提／"
+                              f"次の発注日＝在庫が尽きる日−リードタイム−{REORDER_LEAD}日／"
+                              f"実行するたびに下へ追記します（過去分は消しません）"]],
+                     value_input_option="USER_ENTERED")
+        sheets_retry(ws.update, range_name=f"A2:{col_letter(len(HEADERS))}2",
+                     values=[HEADERS], value_input_option="USER_ENTERED")
+        used = 2
+
+    need_rows = used + len(out) + 3
+    if need_rows > ws.row_count:
+        sheets_retry(ws.add_rows, need_rows - ws.row_count + 50)
+
+    sep = used + 1
+    sheets_retry(ws.update, range_name=f"A{sep}",
+                 values=[[f"── {today} 作成  {len(out)}商品 / 合計 "
+                          f"{sum(r[2] for r in out):,}個 ──"]],
                  value_input_option="USER_ENTERED")
-    sheets_retry(ws.update, range_name=f"A2:{col_letter(len(HEADERS))}2",
-                 values=[HEADERS], value_input_option="USER_ENTERED")
-    if out:
-        sheets_retry(ws.update, range_name=f"A3:{col_letter(len(HEADERS))}{len(out) + 2}",
-                     values=out, value_input_option="USER_ENTERED")
+    start = sep + 1
+    sheets_retry(ws.update,
+                 range_name=f"A{start}:{col_letter(len(HEADERS))}{start + len(out) - 1}",
+                 values=out, value_input_option="USER_ENTERED")
 
-    sheets_retry(sp.batch_update, {"requests": [
+    reqs = [
         {"repeatCell": {
-            "range": {"sheetId": ws.id, "startRowIndex": 1, "endRowIndex": 2,
+            "range": {"sheetId": ws.id, "startRowIndex": sep - 1, "endRowIndex": sep,
                       "startColumnIndex": 0, "endColumnIndex": len(HEADERS)},
             "cell": {"userEnteredFormat": {
-                "backgroundColor": {"red": .19, "green": .35, "blue": .55},
-                "textFormat": {"bold": True, "foregroundColor":
-                               {"red": 1, "green": 1, "blue": 1}},
-                "horizontalAlignment": "CENTER", "wrapStrategy": "WRAP",
-                "verticalAlignment": "MIDDLE"}},
-            "fields": "userEnteredFormat"}},
+                "backgroundColor": {"red": .85, "green": .89, "blue": .95},
+                "textFormat": {"bold": True}}},
+            "fields": "userEnteredFormat(backgroundColor,textFormat)"}},
         {"repeatCell": {
-            "range": {"sheetId": ws.id, "startRowIndex": 0, "endRowIndex": 1},
-            "cell": {"userEnteredFormat": {"textFormat": {"bold": True, "fontSize": 12}}},
-            "fields": "userEnteredFormat.textFormat"}},
-        {"updateSheetProperties": {
-            "properties": {"sheetId": ws.id,
-                           "gridProperties": {"frozenRowCount": 2, "frozenColumnCount": 1}},
-            "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount"}},
-        {"repeatCell": {
-            "range": {"sheetId": ws.id, "startRowIndex": 2,
-                      "endRowIndex": len(out) + 2, "startColumnIndex": 1, "endColumnIndex": 2},
+            "range": {"sheetId": ws.id, "startRowIndex": start - 1,
+                      "endRowIndex": start + len(out) - 1,
+                      "startColumnIndex": 2, "endColumnIndex": 3},
             "cell": {"userEnteredFormat": {
                 "textFormat": {"bold": True},
                 "backgroundColor": {"red": 1, "green": .95, "blue": .8},
                 "horizontalAlignment": "RIGHT"}},
             "fields": "userEnteredFormat(textFormat,backgroundColor,horizontalAlignment)"}},
-        {"autoResizeDimensions": {"dimensions": {
-            "sheetId": ws.id, "dimension": "COLUMNS",
-            "startIndex": 0, "endIndex": len(HEADERS)}}},
-    ]})
-    print(f"\n→ 「{PLAN}」タブに {len(out)}行 書き込みました")
+    ]
+    if new_sheet or used == 2:
+        reqs += [
+            {"repeatCell": {
+                "range": {"sheetId": ws.id, "startRowIndex": 1, "endRowIndex": 2,
+                          "startColumnIndex": 0, "endColumnIndex": len(HEADERS)},
+                "cell": {"userEnteredFormat": {
+                    "backgroundColor": {"red": .19, "green": .35, "blue": .55},
+                    "textFormat": {"bold": True, "foregroundColor":
+                                   {"red": 1, "green": 1, "blue": 1}},
+                    "horizontalAlignment": "CENTER", "wrapStrategy": "WRAP",
+                    "verticalAlignment": "MIDDLE"}},
+                "fields": "userEnteredFormat"}},
+            {"repeatCell": {
+                "range": {"sheetId": ws.id, "startRowIndex": 0, "endRowIndex": 1},
+                "cell": {"userEnteredFormat": {"textFormat": {"bold": True, "fontSize": 12}}},
+                "fields": "userEnteredFormat.textFormat"}},
+            {"updateSheetProperties": {
+                "properties": {"sheetId": ws.id,
+                               "gridProperties": {"frozenRowCount": 2}},
+                "fields": "gridProperties.frozenRowCount"}},
+            {"autoResizeDimensions": {"dimensions": {
+                "sheetId": ws.id, "dimension": "COLUMNS",
+                "startIndex": 0, "endIndex": len(HEADERS)}}},
+        ]
+    sheets_retry(sp.batch_update, {"requests": reqs})
+    print(f"\n→ 「{PLAN}」タブの {start}行目から {len(out)}行 追記しました")
     print(f"   https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}")
 
 
